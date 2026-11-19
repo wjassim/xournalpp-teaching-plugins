@@ -1,6 +1,6 @@
 # Xournal++ plugins for teaching with a pen
 
-I use Xournal++ in my lessons with a Wacom pen. A few small things kept slowing me down, so I wrote these
+I use [Xournal++](https://github.com/xournalpp/xournalpp) in my lessons with a Wacom pen. A few small things kept slowing me down, so I wrote these
 four plugins to fix them. I use them every day now.
 
 They're made around the way I work, so some choices are just my own taste. If you write a lot with a pen
