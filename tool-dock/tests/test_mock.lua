@@ -42,15 +42,17 @@ if I.parseTools then
     check("parseColours drops bad and duplicates", same(I.parseColours("12345G,ff0000,FF0000,12345"), {0xFF0000}), show(I.parseColours("12345G,ff0000,FF0000,12345")))
     check("parseColours accepts #", same(I.parseColours("#00A000"), {0x00A000}))
     check("colourText pads", I.colourText(0x00A000) == "00A000", I.colourText(0x00A000))
-    check("catalogue has 36 entries", #I.CATALOGUE == 36, #I.CATALOGUE)
-    local nTools, nCmd, ids, okShape = 0, 0, {}, true
+    check("catalogue has 43 entries", #I.CATALOGUE == 43, #I.CATALOGUE)
+    local nTools, nCmd, nLine, ids, okShape = 0, 0, 0, {}, true
     for _, e in ipairs(I.CATALOGUE) do
-        if e.action or e.helper or e.menu then nCmd = nCmd + 1 else nTools = nTools + 1 end
+        if e.lineStyle then nLine = nLine + 1
+        elseif e.action or e.helper or e.menu then nCmd = nCmd + 1 else nTools = nTools + 1 end
         local kinds = (e.const and 1 or 0) + (e.action and 1 or 0) + (e.draw and 1 or 0) + (e.menu and 1 or 0)
+                      + (e.lineStyle and 1 or 0)
         if ids[e.id] or not e.icon or not e.label or kinds ~= 1 then okShape = false end
         ids[e.id] = true
     end
-    check("22 tools + 14 commands", nTools == 22 and nCmd == 14, nTools .. " + " .. nCmd)
+    check("22 tools + 17 commands + 4 line styles", nTools == 22 and nCmd == 17 and nLine == 4, nTools .. " + " .. nCmd .. " + " .. nLine)
     check("every entry: own id, icon, label, ONE of tool / command / drawing mode", okShape)
     check("commands need app.activateAction", I.available("zoomIn") == false)
     app.activateAction = function() end
@@ -235,6 +237,11 @@ if I.customIndex then
     local e = I.entryOf("custom1")
     check("custom: auto zoom gets the magnifier and the ON flag", e and e.icon == "system-search-symbolic"
           and e.env == "XOPP_AUTOZOOM_ON" and e.custom == I.CUSTOM[1])
+    I.CUSTOM[7] = {group = "Plugin", label = "Snapshot: drag a rectangle (on / off)", key = "Ctrl+Alt+F8"}
+    local s7 = I.entryOf("custom7")
+    check("custom: snapshot gets the camera and the XOPP_SNAPSHOT_ON flag (0.8.2)", s7 and s7.icon == "camera-photo-symbolic"
+          and s7.env == "XOPP_SNAPSHOT_ON")
+    I.CUSTOM[7] = nil
     local u = I.entryOf("custom2")
     check("custom: Undo gets the catalogue's undo icon", u and u.icon == "xopp-edit-undo" and u.short == "Z", u and u.short)
     I.CUSTOM[6] = {group = "Plugin", label = "Snapshot: show the floating window", key = "Ctrl+Alt+F9"}
@@ -269,7 +276,7 @@ if I.customIndex then
         nT = nT + 1
         if not I.catalogueEntry(id) or lab ~= lab:lower() then allIds = false end
     end
-    check("custom list hides 27 tick-box entries, each a catalogue id", nT == 27 and allIds, nT)
+    check("custom list hides 30 tick-box entries, each a catalogue id", nT == 30 and allIds, nT)
 else
     check("customIndex exists", false)
 end
@@ -280,6 +287,64 @@ if I.catalogueEntry then
     check("autozoom: catalogue entry = the autozoom plugin's menu entry", e and e.menu == "Auto zoom: ON / OFF"
           and e.plugin == "autozoom" and e.env == "XOPP_AUTOZOOM_ON")
     check("autozoom: available only when the plugin is installed", I.available("autozoom") == I.pluginInstalled("autozoom"))
+    local pz = I.catalogueEntry("autozoomPause")
+    check("autozoom pause: catalogue entry = autozoom 0.16's pause menu entry, lit while paused",
+          pz and pz.menu == "Auto zoom: pause zoom in / out" and pz.plugin == "autozoom" and pz.env == "XOPP_AUTOZOOM_PAUSED")
+    check("autozoom pause: available only when the plugin is installed", I.available("autozoomPause") == I.pluginInstalled("autozoom"))
+end
+-- 0.7.5: carry ink buttons = preserve-view 2.8's menu entries
+if I.catalogueEntry then
+    local c, k = I.catalogueEntry("carryInk"), I.catalogueEntry("clearInk")
+    check("carry ink: catalogue entry", c and c.menu == "Carry ink: on / off" and c.plugin == "preserve-view"
+          and c.env == "XOPP_CARRYINK_ON")
+    check("clear page ink: catalogue entry", k and k.menu == "Clear page ink" and k.plugin == "preserve-view" and k.env == nil)
+    check("carry ink: available only with preserve-view", I.available("carryInk") == I.pluginInstalled("preserve-view"))
+end
+
+-- 0.8: pen line styles
+if I.catalogueEntry and I.useTool then
+    local styles = {}
+    for _, e in ipairs(I.CATALOGUE) do if e.lineStyle then styles[#styles + 1] = e.lineStyle end end
+    check("line styles: plain, dash, dashdot, dot", same(styles, {"plain", "dash", "dashdot", "dot"}), show(styles))
+    check("line style ids parse", same(I.parseTools("lineDash,lineDot"), {"lineDash", "lineDot"}))
+    local saved = {app.changeActionState, app.getActionState}
+    app.changeActionState = nil
+    check("line styles need changeActionState", I.available("lineDash") == false)
+    local tool, style, calls = 2, "plain", {}
+    app.changeActionState = function(a, v)
+        calls[#calls + 1] = a .. "=" .. tostring(v)
+        if a == "select-tool" then tool = v elseif a == "tool-pen-line-style" then style = v end
+    end
+    app.getActionState = function(a) if a == "select-tool" then return tool end end
+    check("line styles available with changeActionState", I.available("lineDash") == true)
+    I.useTool("lineDash")
+    check("line style from the eraser: pen first, then dashed", tool == 1 and style == "dash"
+          and calls[1] == "select-tool=1" and calls[2] == "tool-pen-line-style=dash", table.concat(calls, " | "))
+    calls = {}
+    I.useTool("lineDot")
+    check("line style on the pen: only the style changes", #calls == 1 and style == "dot", table.concat(calls, " | "))
+    app.changeActionState, app.getActionState = saved[1], saved[2]
+end
+
+-- 0.8: move a tool or colour earlier / later (tools this build lacks are stepped over)
+if I.moveItem then
+    I.CFG.TOOLS = {"pen", "link", "eraser", "hand"}         -- link: not in this fake app.C
+    check("move: link is not available here", I.available("link") == false)
+    check("move: first tool cannot go earlier", I.moveTarget({kind = "tool", id = "pen"}, -1) == nil)
+    check("move: pen later skips link", I.moveItem({kind = "tool", id = "pen"}, 1)
+          and same(I.CFG.TOOLS, {"eraser", "link", "pen", "hand"}), show(I.CFG.TOOLS))
+    check("move: hand earlier", I.moveItem({kind = "tool", id = "hand"}, -1)
+          and same(I.CFG.TOOLS, {"eraser", "link", "hand", "pen"}), show(I.CFG.TOOLS))
+    check("move: last tool cannot go later", I.moveTarget({kind = "tool", id = "pen"}, 1) == nil)
+    check("move: eraser earlier: nothing before it on the dock", I.moveItem({kind = "tool", id = "eraser"}, -1) == false)
+    I.CFG.COLOURS = {0x000000, 0xE00000, 0x00A000}
+    check("move: colour later", I.moveItem({kind = "colour", colour = 0x000000}, 1)
+          and same(I.CFG.COLOURS, {0xE00000, 0x000000, 0x00A000}), show(I.CFG.COLOURS))
+    check("move: last colour cannot go later", I.moveTarget({kind = "colour", colour = 0x00A000}, 1) == nil)
+    check("move: thickness button never moves", I.moveTarget({kind = "size"}, 1) == nil)
+    I.resetDefaults()
+else
+    check("moveItem exists", false)
 end
 
 for _, l in ipairs(out) do print(l) end

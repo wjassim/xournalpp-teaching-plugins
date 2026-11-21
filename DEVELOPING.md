@@ -101,7 +101,14 @@ grip is a button too: while it is pressed in, the timer moves the window by the 
 (`Gdk.Device:get_position`). Tools: `app.changeActionState("select-tool", app.C.Tool_...)`. Shapes are
 drawing modes of the pen ("tool-draw-arrow" ...). Colours: `app.changeToolColor`. Thickness:
 `app.changeActionState("tool-size", app.C.ToolSize_...)`, read back with `app.getActionState("tool-size")`
-(0 to 4). Custom buttons run the menu item itself. Facts checked: `app.getActionState("tool-color")` is
+(0 to 4). Line styles (0.8): `app.changeActionState("tool-pen-line-style", "plain" | "dash" | "dashdot" |
+"dot")`; `app.getActionState("tool-pen-line-style")` gives the CURRENT tool's style (`"none"` on the laser,
+eraser, highlighter or select tools; the pen keeps its own, `app.getToolInfo("pen").lineStyle`). The lit
+button follows the current tool's style, like Xournal++'s Pen Options menu, which ticks nothing off the pen
+(checked live). Setting a style while on another tool makes Xournal++ switch to the pen by itself; a
+drawing mode (arrow ...) stays on. Moving a button swaps two places in `TOOLS` (or `COLOURS`), stepping
+over tools this build doesn't have. The move window is not modal: a press that starts off the dock and off
+that window (checked with its frame extents) closes it. Custom buttons run the menu item itself. Facts checked: `app.getActionState("tool-color")` is
 ARGB (`0xFF......`); `app.changeToolColor` on a tool without colour raises "has no color capability", with
 `tool = "pen"` it works. The `:backdrop` CSS rule keeps the button text in the theme's normal colour.
 
@@ -113,6 +120,24 @@ within one pixel of the true place however many hops. If GTK can't be reached, o
 `getZoom() * getDisplayDpi() / 72` by more than 3 %, the estimate is used instead. The Page step window is
 read by a GLib timer about 30 times a second while it's open; the page number is read only after a click,
 a scroll, or every 3 s.
+
+**Page number in the Page step window (preserve-view 2.8.1).** `app.getDocumentStructure` costs about
+21 ms on a 1228-page document, so the window keeps the page tops (EDGE_PAD 10, PAGE_GAP 15, page heights
+x pixels per point) and takes the page under the middle of the view: checked live at 3 zooms, 179 scroll
+positions, 0 differences from Xournal++'s `currentPage`. Real read every 30 s and after a zoom change.
+
+**Carry ink (preserve-view 2.8).** Runs only inside a forward hop that moved the view, never on a timer.
+`app.setCurrentPage(from)` (it doesn't scroll), read the current layer with `getStrokes` / `getTexts` /
+`getImages("layer")`, `app.setCurrentPage(to)`, read the target the same way, then add copies with
+`addStrokes` / `addTexts` / `addImages` (`ref` left out), then `app.refreshPage()`: without it the
+new ink is in the page but not drawn (2.8.1 fix; a mock test can't see this, only a look at the screen can). Facts checked live on 1.3.x: each add call is
+its own undo step, even with `"grouped"`; `addImages` takes whole-number `maxWidth` / `maxHeight` only
+("number has no integer representation"), so picture sizes are rounded and compared rounded; deleting =
+`clearSelection` + `addToSelection(refs)` + `activateAction("delete")`, one undo step (the tool is read
+before and put back if it changed). "Add only what is missing" compares items by a key (tool, colour,
+width, point count, first and last point; text and place; picture place, size and data length). On / off
+goes to the tool-dock through `XOPP_CARRYINK_ON`. Costs on a 420-page document: a hop 8 ms, a hop with a
+carry 12-21 ms.
 
 ## Tests
 
@@ -139,8 +164,11 @@ somewhere else. Run them from the plugin's folder:
     cd preserve-view
     powershell -ExecutionPolicy Bypass -File ..\autozoom\tests\run_lua55.ps1 tests\test_mock.lua
     powershell -ExecutionPolicy Bypass -File ..\autozoom\tests\run_lua55.ps1 tests\test_gtk_smoke.lua
+    powershell -ExecutionPolicy Bypass -File ..\autozoom\tests\run_lua55.ps1 tests\test_carry.lua
 
 - `test_mock.lua`: a fake clock, GTK and `app` with the real page layout.
+- `test_carry.lua` (preserve-view): carry ink on a fake document that keeps strokes, texts and pictures per
+  page (add / replace / leave, tick boxes, Clear, last page, settings).
 - `test_gtk_smoke.lua`: real LuaGObject, GLib timer and GTK windows with a fake `app` (keys, panels,
   buttons, saving). tool-dock's also checks the grip drag, pickers, custom buttons, small screens and the
   light / dark theme.

@@ -53,12 +53,27 @@ if p then
     snapshotRect()
     pcall(p.poll)
     check("key arms and the button follows", I.S().mode == "ARMED" and p.btn:get_active() == true)
+    check("0.11: XOPP_SNAPSHOT_ON = 1 while waiting for a drag", lgo.GLib.getenv("XOPP_SNAPSHOT_ON") == "1",
+          lgo.GLib.getenv("XOPP_SNAPSHOT_ON"))
     snapshotRect()
     pcall(p.poll)
     check("key again: button released", I.S().mode == "IDLE" and p.btn:get_active() == false)
     p.win:hide()
     pcall(p.poll)
     check("closing the window is noticed", I.panel() == nil)
+    check("0.11: XOPP_SNAPSHOT_ON = 0 after the mode", lgo.GLib.getenv("XOPP_SNAPSHOT_ON") == "0",
+          lgo.GLib.getenv("XOPP_SNAPSHOT_ON"))
+    local function popups()
+        local c = 0
+        for _, w in ipairs(Gtk.Window.list_toplevels()) do
+            local ty = w:get_window_type()
+            if (ty == "POPUP" or ty == Gtk.WindowType.POPUP) and w:get_visible() then c = c + 1 end
+        end
+        return c
+    end
+    local before = popups()
+    local okT, eT = pcall(I.H.toast, "Too quick: the page was still loading.\nDrag again.", {x = 40, y = 40})
+    check("0.11: note pops up (window closed)", okT and popups() == before + 1, eT or popups())
 end
 os.remove(SNAPSHOT_SETTINGS_FILE)
 out[#out + 1] = (fails == 0 and "ALL PASS" or ("FAILED " .. fails))

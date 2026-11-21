@@ -1,5 +1,25 @@
 # snapshot changelog
 
+## 0.11 (2026-11-21)
+- **Lit on the dock:** while snapshot waits for your drag (from the press of the button until the copy is
+  made, or until you stop it) it publishes `XOPP_SNAPSHOT_ON` = 1, so tool-dock 0.8.2 lights its camera
+  button, the same way it does for auto zoom.
+- **Quicker feel on the press:** the page is made in advance 0.2 s after the press (was 0.06 s), so the lit
+  button and the new tool are drawn before Xournal++ is held up by it. New setting `EARLY_DELAY_MS` (200).
+- **Shorter hold-up:** the page picture is now 4 pixels per page point (was 6), so 3840 px wide for a
+  960 pt page. Measured on a 1228-page PDF: making it takes 0.19 s instead of 0.39 s. The copies look the
+  same even zoomed in; zoomed in further than that the picture grows with the zoom, as before. An old
+  settings.txt keeps its own value: change `PX_PER_PT=6` to 4 there.
+- **Note when a drag is not used** (see the fix below): with the floating window closed, a small note pops
+  up beside the pen for 2 s: "Too quick: the page was still loading. Drag again." With the window open, its
+  status line says it.
+- Fix: a quick drag right after pressing the snapshot button could copy the wrong place. The page is made
+  in advance when the mode starts, and that holds Xournal++ up for about 0.4 s. The pen position can't be
+  read while that runs, so a drag that began in that time was first seen half way, and the copy started
+  there: narrower, and beside the box you drew. Such a drag is now not used. Nothing is copied, the window
+  says "too quick (the page was still loading): drag again", and the next drag works (the page is ready by
+  then). New setting `LATE_MS` (100).
+
 ## 0.10 (2026-11-19)
 - Fix: with a short document that fits in the view (for example zoom to fit on a one-page file), the copy
   was about 5 % too small and a little off, and the window said "copied (layout check failed, see the

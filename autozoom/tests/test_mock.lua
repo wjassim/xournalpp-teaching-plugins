@@ -106,9 +106,10 @@ local function world(opts)
     end}}
     local GLib = {PRIORITY_DEFAULT = 0,
                   get_monotonic_time = function() return W.clock * 1000 end,
+                  setenv = function(k, v) W.env = W.env or {} W.env[k] = v end,
                   timeout_add = function(_, ms, fn) W.timers[#W.timers + 1] = {ms = ms, fn = fn, due = W.clock + ms} return #W.timers end}
     package.loaded["LuaGObject"] = {GLib = GLib, require = function(n) return n == "Gtk" and Gtk or Gdk end}
-    autozoomToggle, autozoomNow, autozoomPanel, initUi = nil, nil, nil, nil
+    autozoomToggle, autozoomNow, autozoomPanel, autozoomPause, initUi = nil, nil, nil, nil, nil
     dofile(PLUGIN)
     W.sy = opts.sy or (W.P + 800 * (W.hpx(W.zoom) + W.G) + 100)
     W.sx = opts.sx or 0
@@ -162,9 +163,9 @@ world()
 initUi()
 local extra = {}
 for k in pairs(_G) do
-    if not before[k] and k ~= "app" and k ~= "autozoomToggle" and k ~= "autozoomNow" and k ~= "autozoomPanel" and k ~= "initUi" then extra[#extra + 1] = k end
+    if not before[k] and k ~= "app" and k ~= "autozoomToggle" and k ~= "autozoomNow" and k ~= "autozoomPanel" and k ~= "autozoomPause" and k ~= "initUi" then extra[#extra + 1] = k end
 end
-check("loads and registers 3 menu entries", W.reg == 3, W.reg)
+check("loads and registers 4 menu entries", W.reg == 4, W.reg)
 check("no new globals besides the callbacks", #extra == 0, table.concat(extra, ","))
 check("off at startup: no timer", live() == 0)
 
@@ -534,6 +535,18 @@ W.sel = {}
 pump(9000, writing)
 check("selection gone: writing zooms again", near(W.zoom / z0, 1.6, 1e-9), W.zoom / z0)
 
+-- 20b. zoomed in, then a long drag with Select Rectangle (a snapshot): no zoom out on the release (v0.16.1)
+withTools()
+pump(6000, writing)
+pump(500, hoverAt(800, 500))
+local zIn = W.zoom
+W.tool = 6
+pump(5000, function(t) W.pen.x, W.pen.y, W.pen.down = 700 + (t or 0) / 25, 450 + (t or 0) / 50, true end)
+pump(400, hoverAt(900, 550))
+check("zoomed in: a 5 s Select Rectangle drag does not zoom out on the release", W.zoom == zIn, W.zoom / z0)
+pump(4000, frozen())
+check("zoomed in: still zooms out after the idle time once the drag ended", W.zoom == z0, W.zoom / z0)
+
 for _, t in ipairs({3, 23}) do     -- highlighter, laser pointer pen
     withTools()
     W.tool = t
@@ -570,6 +583,55 @@ app.C.Tool_eraser, app.C.Tool_hand = 2, 13
 W.tool = 13
 pump(6000, hoverAt(700, 450))
 check("hand hovering still does not zoom", W.zoom == z0 and W.zoomCalls == 0, W.zoomCalls)
+
+-- 30. pause (0.16): no zoom in / out by itself, edge slide and follow keep working
+local function env(k) return W.env and W.env[k] end
+local function writeAt(x, y) return function(t) jit = 1 - jit W.pen.x, W.pen.y, W.pen.down = x + jit, y, (t % 250) < 150 end end
+world()
+autozoomPause()
+check("pause while OFF switches on, paused", env("XOPP_AUTOZOOM_ON") == "1" and env("XOPP_AUTOZOOM_PAUSED") == "1" and live() == 1,
+      tostring(env("XOPP_AUTOZOOM_ON")) .. " " .. tostring(env("XOPP_AUTOZOOM_PAUSED")))
+z0 = W.zoom
+pump(3000, hoverAt(800, 500))
+check("paused: hovering does not zoom in", W.zoom == z0 and W.zoomCalls == 0, W.zoomCalls)
+pump(3000, writeAt(800, 500))
+check("paused: writing does not zoom in", W.zoom == z0 and W.zoomCalls == 0, W.zoomCalls)
+local syE = W.sy
+pump(2600, hoverAt(800, 1215))
+check("paused, not zoomed in: edge slide works (PAN_IDLE off)", W.sy > syE + 100 and W.zoom == z0, W.sy - syE)
+pump(1500, hoverAt(800, 500))
+autozoomPause()
+check("pause ended", env("XOPP_AUTOZOOM_PAUSED") == "0" and env("XOPP_AUTOZOOM_ON") == "1")
+pump(3000, hoverAt(800, 500))
+check("after the pause: hover zooms in again", near(W.zoom / z0, 1.6, 1e-9), W.zoom / z0)
+local zZ = W.zoom
+autozoomPause()
+pump(8000, frozen())
+check("paused while zoomed in: no zoom out", W.zoom == zZ, W.zoom / z0)
+local sxZ2 = W.sx
+pump(2600, hoverAt(2150, 600))
+check("paused while zoomed in: edge slide works", W.sx > sxZ2 + 100 and W.zoom == zZ, W.sx - sxZ2)
+pump(500, hoverAt(1000, 600))
+local sxF, syF = W.sx, W.sy
+pump(200, writeAt(1000, 1080))
+pump(3000, hoverAt(1000, 600))
+check("paused while zoomed in: follow glide works", W.sy > syF + 50 and W.zoom == zZ, W.sy - syF)
+autozoomNow() pump(3000, frozen())
+check("paused: Ctrl+Alt+F6 still zooms out", W.zoom == z0, W.zoom / z0)
+autozoomNow() pump(3000, frozen())
+check("paused: Ctrl+Alt+F6 still zooms in", near(W.zoom / z0, 1.6, 1e-9), W.zoom / z0)
+pump(8000, frozen())
+check("paused: zoomed in by key stays in", near(W.zoom / z0, 1.6, 1e-9), W.zoom / z0)
+autozoomPause()
+pump(1000, frozen())
+check("pause ended while zoomed in: no instant zoom out", near(W.zoom / z0, 1.6, 1e-9), W.zoom / z0)
+pump(6000, frozen())
+check("pause ended: zooms out after the idle time", W.zoom == z0, W.zoom / z0)
+autozoomPause() autozoomToggle()
+check("switching OFF ends the pause", env("XOPP_AUTOZOOM_PAUSED") == "0" and env("XOPP_AUTOZOOM_ON") == "0")
+autozoomToggle()
+pump(3000, hoverAt(800, 500))
+check("on again: not paused", near(W.zoom / z0, 1.6, 1e-9), W.zoom / z0)
 
 out[#out + 1] = (fails == 0) and "\nall checks passed" or ("\nFAILED: " .. fails)
 return table.concat(out, "\n")

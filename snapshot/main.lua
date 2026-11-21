@@ -1,4 +1,4 @@
--- Snapshot region plugin for Xournal++  (v0.10)
+-- Snapshot region plugin for Xournal++  (v0.11)
 -- Author: Wissam Jassim (written with Claude).
 -- Copyright (c) 2026 Wissam Jassim. MIT licence, see LICENSE in the repository root.
 -- SPDX-License-Identifier: MIT
@@ -41,7 +41,8 @@
 --   reads them when Xournal++ starts). Example: KEY_RECT=<Control><Shift>S
 
 local CFG = {
-    PX_PER_PT = 6,          -- sharpness: picture pixels per page point (960 pt wide page -> 5760 px)
+    PX_PER_PT = 4,          -- sharpness: picture pixels per page point (960 pt wide page -> 3840 px). 0.11: was 6;
+                            -- 4 looks the same zoomed in and halves the hold-up (0.39 -> 0.19 s, measured)
     ZOOM_HEADROOM = 1.25,   -- zoomed in further than PX_PER_PT: picture pixels = screen pixels x this
     MAX_PAGE_PX = 8000,     -- upper limit for the exported page width in pixels
     MIN_SIZE = 10,          -- smaller rectangles (page points, either side) are ignored
@@ -53,8 +54,10 @@ local CFG = {
     BG_NEAR = 60,           --   and lie this near the main one (0 .. 255; 0 = one background colour only)
     CLIPBOARD = true,       -- every copy also goes to the Windows clipboard (paste into Word, PowerPoint, Paint ...)
     EARLY_EXPORT = true,    -- export the page as soon as the mode starts, so the copy appears at once on release
+    EARLY_DELAY_MS = 200,   --   that long after the press, so the lit button is drawn first (ms)
     SETTLE_MS = 80,        -- wait after the release, so Xournal++ finishes its own selection first
     TICK_MS = 16,           -- timer interval
+    LATE_MS = 100,          -- a press first seen after a longer break than this (Xournal++ was busy) is not used
     PANEL_AT_START = false, -- show the floating window when Xournal++ starts (Ctrl+Alt+F9 shows it any time)
     PANEL_X = -1,           -- floating window position (saved by itself)
     PANEL_Y = -1,
@@ -131,6 +134,7 @@ local function loadSettings()
     if CFG.MAX_PAGE_PX < 500 then CFG.MAX_PAGE_PX = 500 end
     if CFG.MIN_SIZE < 1 then CFG.MIN_SIZE = 1 end
     if CFG.TICK_MS < 5 then CFG.TICK_MS = 5 end
+    if CFG.EARLY_DELAY_MS < 0 then CFG.EARLY_DELAY_MS = 0 end
     CFG.FAINT_CUT = math.max(0, math.min(90, CFG.FAINT_CUT))
     CFG.BG_SHARE = math.max(1, math.min(100, CFG.BG_SHARE))
     CFG.BG_NEAR = math.max(0, math.min(255, CFG.BG_NEAR))
@@ -466,6 +470,40 @@ local function scrollPos()
 end
 local panel = nil       -- the floating window, when open
 
+-- 0.11: the mode is published in the process environment (XOPP_SNAPSHOT_ON = 1 while it waits for
+-- a drag, until the copy is made; 0 otherwise), so tool-dock (its own Lua state) can light its
+-- snapshot button, as it does for auto zoom. Set only when it changes.
+local publishedOn = nil
+function H.publish(on)
+    if on == publishedOn then return end
+    publishedOn = on
+    pcall(function() bindings().GLib.setenv("XOPP_SNAPSHOT_ON", on and "1" or "0", true) end)
+end
+
+-- 0.11: a small note beside the pen that goes away by itself (no button to click). Only when the
+-- floating window is closed: when it is open, its status line says the same.
+function H.toast(text, pen)
+    if panel or not ui or not ui.gdkwin then return end
+    pcall(function()
+        local G = bindings().Gtk
+        local win = G.Window {type = G.WindowType.POPUP, accept_focus = false, focus_on_map = false}
+        if ui.top then win:set_transient_for(ui.top) end
+        win:add(G.Label {label = text, margin = 12})
+        local r = {ui.gdkwin:get_origin()}
+        local ox, oy = r[#r - 1], r[#r]
+        if type(ox) == "number" and type(oy) == "number" then
+            local px, py = 24, 24
+            if pen and type(pen.x) == "number" and type(pen.y) == "number" then px, py = pen.x + 24, pen.y + 24 end
+            win:move(math.floor(ox + px), math.floor(oy + py))
+        end
+        win:show_all()
+        bindings().GLib.timeout_add(bindings().GLib.PRIORITY_DEFAULT, 2000, function()
+            pcall(function() win:destroy() end)
+            return false
+        end)
+    end)
+end
+
 local function walk(b, w, depth, visit)
     visit(w, depth)
     local okC, isC = pcall(function() return b.Gtk.Container:is_type_of(w) end)
@@ -684,6 +722,7 @@ local function disarm(restore, text)
         H.later(300, function() collectgarbage() end)   -- give the big page picture back soon
     end
     S.model = nil
+    H.publish(false)
     if text then setStatus(text) end
 end
 
@@ -721,7 +760,8 @@ local function arm()
         setStatus("cannot switch to the Select Rectangle tool")
         return false
     end
-    S.mode, S.seenUp = "ARMED", false
+    S.mode, S.seenUp, S.missed, S.lastTick = "ARMED", false, nil, H.now()
+    H.publish(true)
     local okM, m = pcall(buildModel)
     S.model = okM and m or nil
     S.armGen = (S.armGen or 0) + 1
@@ -729,7 +769,9 @@ local function arm()
     H.ensureTimer()
     if CFG.EARLY_EXPORT and S.model then
         local gen = S.armGen
-        H.later(60, function() earlyExport(gen) end)     -- after the tool change is drawn
+        -- 0.11: wait EARLY_DELAY_MS (was 60 ms) so the lit dock button and the tool change are drawn
+        -- before the export holds Xournal++ up (about 0.4 s); the press then feels as quick as any tool
+        H.later(CFG.EARLY_DELAY_MS, function() earlyExport(gen) end)
     end
     return true
 end
@@ -768,6 +810,10 @@ end
 local function tick()
     if S.mode == "IDLE" then return end
     local now = H.now()
+    -- time since the last look at the pen. Long when Xournal++ was held up, mostly by the page
+    -- export made in advance (about 0.4 s): the timer cannot run then, but the pen goes on.
+    local gap = now - (S.lastTick or now)
+    S.lastTick = now
     local sp = scrollPos()
     local pen = H.readPen(sp)
 
@@ -781,6 +827,19 @@ local function tick()
         if not H.appActive() then return end      -- a drag in another program is not ours
         if not pen.down then
             S.seenUp = true
+            if S.missed then
+                -- the box Xournal++ drew for the missed drag holds a selection: let it go, or the
+                -- next drag over the same spot would move the selected ink instead of drawing a box
+                S.missed = nil
+                if app.clearSelection then pcall(app.clearSelection) end
+            end
+        elseif S.seenUp and pen.inside and gap > CFG.LATE_MS then
+            -- the press came while we could not look: where it began is unknown. A copy from
+            -- here would start part way through the drag (0.11). Wait for the next drag.
+            S.seenUp, S.missed = false, true
+            log(string.format("drag began while Xournal++ was busy (no look at the pen for %d ms)", gap))
+            setStatus("too quick (the page was still loading): drag again")
+            H.toast("Too quick: the page was still loading.\nDrag again.", pen)
         elseif S.seenUp and pen.inside then
             local d = docAt(sp, pen, nil, S.model)
             if d then

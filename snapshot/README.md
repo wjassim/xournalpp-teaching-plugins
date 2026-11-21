@@ -8,7 +8,7 @@ to what I'm writing now.
 
 Copy part of the page and drag it wherever you need it.
 
-Version 0.10. Needs Xournal++ 1.3.8 or newer (stable or nightly). What changed in each version:
+Version 0.11. Needs Xournal++ 1.3.8 or newer (stable or nightly). What changed in each version:
 [CHANGELOG.md](CHANGELOG.md).
 
 ## How to use it
@@ -84,12 +84,14 @@ The plugin writes this file itself. Change it with Xournal++ closed.
 | `BG_SHARE` | 5 | see-through: how much of the copy (percent) a second background colour must fill |
 | `BG_NEAR` | 60 | see-through: how close to the main background a second one must be (0 = one colour only) |
 | `CLIPBOARD` | true | every copy also goes to the clipboard |
-| `PX_PER_PT` | 6 | picture pixels per page point |
+| `PX_PER_PT` | 4 | picture pixels per page point (was 6 before 0.11) |
 | `ZOOM_HEADROOM` | 1.25 | zoomed in: picture pixels = screen pixels x this |
 | `MAX_PAGE_PX` | 8000 | top limit of the exported page width |
 | `MIN_SIZE` | 10 | smaller boxes (page points) are ignored |
 | `OFFSET_X`, `OFFSET_Y` | 0 | where the copy lands next to the original (page points) |
 | `EARLY_EXPORT` | true | get the page ready when the mode starts, so the copy appears at once |
+| `EARLY_DELAY_MS` | 200 | how long after the press it starts (ms); the lit button and the tool change are drawn first |
+| `LATE_MS` | 100 | a drag that began while Xournal++ was busy for longer than this (ms) is not used: drag again |
 | `SETTLE_MS` | 80 | wait after you let go before copying |
 | `PANEL_AT_START` | false | open the floating window when Xournal++ starts |
 | `PAD`, `GAP` | 10, 15 | page spacing of Xournal++ (pixels) |

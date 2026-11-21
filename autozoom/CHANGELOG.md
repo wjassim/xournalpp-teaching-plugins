@@ -1,5 +1,20 @@
 # autozoom changelog
 
+## 0.16.1 (2026-11-21)
+- Fix: zoomed in, a long press that doesn't write (dragging a Select Rectangle box for a snapshot, or
+  dragging a selection) didn't count as being busy. After 3 s the zoom out started and ran the moment you
+  let go, so the view jumped away from the box you had just drawn. Any press on the page now holds the
+  zoom; the zoom-out wait starts when you let go.
+
+## 0.16 (2026-11-21)
+- **Pause zoom in / out:** a new button in the settings panel, a new Plugin menu entry, and a button for
+  tool-dock (0.8). While paused the zoom stays as it is: no zoom in and no zoom out by itself. The edge
+  slide and the follow glide keep working, the edge slide also when you're not zoomed in. Ctrl+Alt+F6
+  still zooms in or out. Press again and it zooms by itself again (the zoom-out wait starts fresh, so
+  it doesn't jump out at once). Pausing while auto zoom is off switches it on, paused; switching it off
+  ends the pause. No key at first (`KEY_PAUSE` in settings.txt). Published as `XOPP_AUTOZOOM_PAUSED` = 1 / 0
+  so tool-dock can light its button.
+
 ## 0.15 (2026-11-19)
 - Fix: with a short document zoomed out so far that it fits in the view (for example zoom to fit on a
   one-page file), the zoom-in did not keep the spot under the pen (40-80 px off). The scroll area is then

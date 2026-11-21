@@ -108,7 +108,7 @@ local function run(zoom, heights, wholePixels, gtk, K100)
     end
     local allowed = {app = 1, nextPageKeepView = 1, previousPageKeepView = 1, nudgeDown = 1, nudgeUp = 1,
                      recalibrate = 1, debugShowScrollPos = 1, initUi = 1,
-                     preserveViewPanel = 1}
+                     preserveViewPanel = 1, carryInkToggle = 1, clearPageInk = 1}
     do  -- nudge uses the step from the settings
         local y0 = y
         nudgeDown()

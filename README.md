@@ -11,7 +11,7 @@ in Xournal++, I hope they make your work easier too.
 | [tool-dock](tool-dock) | A small floating panel with your tools, colours and line sizes. Put it right next to where you write. |
 | [autozoom](autozoom) | Zooms in where the pen is writing, follows along, and zooms back out when you stop. |
 | [snapshot](snapshot) | Drag a box over part of the page and get a copy of it as a picture you can move around. |
-| [preserve-view](preserve-view) | Next / previous page without losing your place. If you were zoomed in on the top left corner, you stay there. |
+| [preserve-view](preserve-view) | Next / previous page without losing your place. If you were zoomed in on the top left corner, you stay there. It can take your writing to the next page too. |
 
 Each plugin works on its own, so you can take only the ones you want.
 
@@ -98,14 +98,12 @@ in five groups:
 **tool-dock** is set up from its **+** button, which opens an edit list:
 
 - Pick the tools you want with tick boxes (every tool your Xournal++ has), plus zoom, undo, redo, ruler,
-  set square, compass, grid snapping, new page and more.
+  set square, compass, grid snapping, new page, the pen's line styles (dashed, dotted ...) and more.
 - Add your own colours with the normal colour picker, and remove the ones you don't use.
 - Add a button for any menu item that has a shortcut, for example next page or a snapshot.
 - Choose the shape (a row, a column or a block with up to 12 buttons per row) and the button
   size (small, medium, large).
-- Give the dock buttons, colours and line sizes their own shortcut keys. They work even when the dock is
-  hidden.
-- To take a button off the dock, hold it for a moment or right-click it.
+- To move a button or take it off the dock, hold it for a moment or right-click it.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/dock-edit-dark.png">
@@ -117,8 +115,9 @@ tick box. In its `settings.txt` you can also choose how sharp the picture is, wh
 the original, whether it goes to the clipboard, and how strongly the background is cleaned out.
 
 **preserve-view** has a small *Page step* window (Ctrl+Alt+F11) with big Previous / Next buttons you can tap
-with the pen, the page number, and the page step check. In `settings.txt` you can set how far one nudge
-moves the view.
+with the pen, the page number, the page step check, and the **Carry ink** / **Clear** buttons with their
+settings (what to carry, and what to do when the next page already has writing). In `settings.txt` you can
+also set how far one nudge moves the view.
 
 Every plugin keeps its settings in a `settings.txt` file in its own folder, so you can also change them
 there (with Xournal++ closed), including all the shortcut keys.
@@ -158,6 +157,7 @@ About your system:
 | Ctrl+Alt+F5 | autozoom | auto zoom on / off |
 | Ctrl+Alt+F6 | autozoom | zoom in at the pen now / zoom out now |
 | Ctrl+Alt+F7 | autozoom | settings panel |
+| (none) | autozoom | pause zoom in / out (button in the panel and on the dock) |
 | Ctrl+Alt+F8 | snapshot | drag a box to copy |
 | Ctrl+Alt+F9 | snapshot | snapshot window |
 | Ctrl+Alt+Right / Left | preserve-view | next / previous page, same view |

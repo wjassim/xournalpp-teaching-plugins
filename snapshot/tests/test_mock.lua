@@ -86,6 +86,9 @@ local function world(opts)
     I.H.later = function(ms, fn) if W.laterNow ~= false then fn() else W.laters[#W.laters + 1] = fn end end
     W.clips = {}
     I.H.toClipboard = function(pic) W.clips[#W.clips + 1] = pic return not W.clipFails end
+    W.toasts = {}
+    I.H.publish = function(on) W.lit = on end
+    I.H.toast = function(text) W.toasts[#W.toasts + 1] = text end
     return I
 end
 
@@ -106,12 +109,12 @@ local r = I.pixelRect({x = 100, y = 50, w = 200, h = 100}, 960, 540, 5760, 3240)
 check("pixel rectangle scales by 6", r.x == 600 and r.y == 300 and r.w == 1200 and r.h == 600)
 r = I.pixelRect({x = 900, y = 500, w = 60, h = 40}, 960, 540, 5759, 3239)
 check("pixel rectangle stays inside the picture", r.x + r.w <= 5759 and r.y + r.h <= 3239)
-check("export width = page width x sharpness", I.exportWidth(960) == 5760)
+check("export width = page width x sharpness (4 px per point, 0.11)", I.exportWidth(960) == 3840)
 check("export width is capped", I.exportWidth(4000) == 8000)
 
 -- ---- copy flow
 local BOX = {x = 100, y = 50, w = 200, h = 100}
-check("zoom below the sharpness: width unchanged", I.exportWidth(960, 2.87) == 5760)
+check("zoom below the sharpness: width unchanged", I.exportWidth(960, 2.87) == 3840)
 check("zoomed in: width follows the zoom (x 1.25)", I.exportWidth(960, 6) == 7200)
 check("zoomed in far: capped", I.exportWidth(960, 10) == 8000)
 I = world({})
@@ -121,9 +124,9 @@ check("two menu entries, F8 = rectangle mode, F9 = window", #W.reg == 2 and W.re
 local msg, err = I.copyBox(BOX, 2, 960, 540)
 check("flow succeeds", msg ~= nil, err)
 local e = W.exports[1]
-check("export: given page, with background, 5760 px", e and e.range == "2" and e.background == "all" and e.pngWidth == 5760)
+check("export: given page, with background, 3840 px", e and e.range == "2" and e.background == "all" and e.pngWidth == 3840)
 local c = W.crops[1]
-check("crop rectangle", c and c.x == 600 and c.y == 300 and c.w == 1200 and c.h == 600, c and (c.x .. "," .. c.y .. "," .. c.w .. "," .. c.h))
+check("crop rectangle (4 px per point)", c and c.x == 400 and c.y == 200 and c.w == 800 and c.h == 400, c and (c.x .. "," .. c.y .. "," .. c.w .. "," .. c.h))
 local im = W.images[1] and W.images[1].images[1]
 check("picture placed on the original, same size", im and im.x == 100 and im.y == 50 and im.maxWidth == 200 and im.maxHeight == 100 and im.aspectRatio == false)
 check("size passed as whole numbers", im and math.type(im.maxWidth) == "integer" and math.type(im.maxHeight) == "integer")
@@ -374,6 +377,50 @@ at4(300, 150, false) step()
 step(100)
 check("zoom changed: page exported again at the new sharpness", #W.exports == 2 and #W.images == 1
       and W.exports[2].pngWidth ~= W.exports[1].pngWidth, #W.exports)
+
+-- 0.10.1: the drag began while the early export held Xournal++ up (0.4 s, the timer could not run).
+-- The press point is unknown then: no copy of a wrong rectangle; the next drag works.
+I = world({page = 2})
+I.arm()
+at(100, 50, false) step()
+at(160, 80, true) step(400)         -- first look after the hold-up: the pen is already half way
+at(300, 150, true) step()
+at(300, 150, false) step()
+step(100)
+check("drag begun during the export hold-up: no copy", #W.images == 0, #W.images)
+check("drag begun during the export hold-up: a note pops up", #W.toasts == 1 and W.toasts[1]:find("Drag again", 1, true) ~= nil, #W.toasts)
+check("drag begun during the export hold-up: dock button still lit", W.lit == true)
+check("drag begun during the export hold-up: still waiting for a drag", I.S().mode == "ARMED" and I.S().status:find("again", 1, true) ~= nil, I.S().status)
+drag(100, 50, 300, 150)
+step(100)
+im = W.images[1] and W.images[1].images[1]
+check("the next drag copies the right rectangle", #W.images == 1 and im and im.x == 100 and im.y == 50
+      and im.maxWidth == 200 and im.maxHeight == 100, im and (im.x .. "," .. im.y .. " " .. im.maxWidth .. "x" .. im.maxHeight))
+I = world({page = 2})
+I.arm()
+at(100, 50, false) step(60)          -- a normal slow tick (a redraw) is not a hold-up
+at(100, 50, true) step(60)
+at(300, 150, true) step()
+at(300, 150, false) step()
+step(100)
+check("a 60 ms tick is not taken as a hold-up", #W.images == 1)
+
+-- 0.11: XOPP_SNAPSHOT_ON for the dock: on from the press of the button until the copy is made
+I = world({page = 2})
+I.arm()
+check("lit as soon as the mode starts", W.lit == true)
+at(100, 50, false) step()
+at(100, 50, true) step()
+at(300, 150, true) step()
+check("still lit during the drag", W.lit == true)
+at(300, 150, false) step()
+check("still lit just after the release (copy not made yet)", W.lit == true)
+step(100)
+check("not lit once the copy is made", W.lit == false and #W.images == 1)
+check("a normal drag shows no note", #W.toasts == 0)
+I.arm()
+I.disarm(true, "stopped")
+check("not lit when the mode is stopped", W.lit == false)
 
 -- EARLY_EXPORT off: old behaviour
 I = world({page = 2})

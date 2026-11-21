@@ -8,7 +8,7 @@ also pass the top edge and slide the view.)
 
 Move the dock next to your writing and pick your tools and colours right there.
 
-Version 0.7.4. Needs Xournal++ 1.3.8 or newer (stable or nightly). What changed in each version:
+Version 0.8.2. Needs Xournal++ 1.3.8 or newer (stable or nightly). What changed in each version:
 [CHANGELOG.md](CHANGELOG.md).
 
 ## Keys (also in the Plugin menu)
@@ -41,9 +41,20 @@ Version 0.7.4. Needs Xournal++ 1.3.8 or newer (stable or nightly). What changed 
   picker sets the pen's size.
 - **Shape buttons** (arrow, rectangle, ellipse, axes, ruler ...): switch to the pen and turn that shape on.
   Press again for freehand. The button is lit while its shape is on.
+- **Line style buttons** (standard, dashed, dash-dot, dotted): switch to the pen with that line style. The
+  style you're drawing with is lit while you're on the pen. On another tool (laser, highlighter, eraser
+  ...) none is lit, the same as Xournal++'s own *Pen Options* menu; the pen keeps its style and it lights
+  up again when you go back to the pen. A shape stays on, so a dashed arrow works too.
 - **+** opens the edit list. **⇄** switches the shape of the dock: a row, a column, or a block.
-- **Remove a button:** hold it for a moment (0.6 s) or right-click it, then "Remove". The + and ⇄ buttons
-  stay. The thickness button can go too (bring it back with its tick in the edit list).
+- **Move or remove a button:** hold it for a moment (0.6 s) or right-click it. A small window opens:
+  - **◀ Move / Move ▶** (▲ / ▼ when the dock is a column) moves the button one place earlier or later. The
+    window stays open, so press again to keep moving it. In a block, a button moves along the row and on
+    to the next row. Colours move among the colours.
+  - **Remove** takes it off the dock, **Close** keeps it.
+  - The window doesn't block anything: you can still try the button on the dock. It closes by itself as
+    soon as you start writing on the page.
+  - The thickness button can't move, only go (bring it back with its tick in the edit list). The + and ⇄
+    buttons always stay at the end.
 - **Grip** (the dotted strip "⠿"): press on it and drag to move the dock. The dock has no title bar and no
   X: hide it with Ctrl+Alt+F12. Its place is remembered, and if that place is off the screen (after
   moving from a bigger monitor) it's pulled back on screen. The dock never takes the keyboard.
@@ -57,12 +68,18 @@ Version 0.7.4. Needs Xournal++ 1.3.8 or newer (stable or nightly). What changed 
 </picture>
 
 - **Tools:** every tool your Xournal++ has, with a tick box. Ticked = on the dock. A new tick goes to the
-  end.
+  end; move it from there with a long press (see above).
 - **Zoom, undo and drawing helpers:** zoom in / out / fit / 100 %, undo, redo, ruler, shape recognizer,
   grid and rotation snapping, set square, compass, new page, with the same tick boxes. Below them: the line
   thickness button.
+- **Pen line style:** standard, dashed, dash-dot and dotted, each with Xournal++'s own icon. None are on
+  the dock to start with.
 - **Auto zoom on / off** (magnifier icon): does what Ctrl+Alt+F5 does, and is lit while auto zoom is on.
   Shown only when the autozoom plugin is installed.
+- **Auto zoom: pause zoom in / out** (pause icon): stops auto zoom zooming in and out by itself, while the
+  edge slide and the follow glide keep working. Lit while paused. Needs autozoom 0.16.
+- **Carry ink on / off** (copy icon) and **Clear page ink** (broom icon): preserve-view's carry ink, see its
+  README. Carry ink is lit while on. Shown only when preserve-view is installed.
 - **Colours:** each colour with a Remove button, and "Add colour ..." (the normal colour picker).
 - **Shape:** a row, a column, or a block with 1 to 12 buttons per row.
 - **Button size:** small, medium or large.
@@ -88,7 +105,8 @@ the Xournal++ menus that has a shortcut, and everything in the Plugin menu.
 - It shows an icon when it knows the item (magnifier = auto zoom, camera = snapshot, arrows = next /
   previous page, the tool's own icon for Pen, Eraser, Undo, Zoom In ...), otherwise the end of its shortcut,
   for example "F9". Hover over it to see its full name and shortcut.
-- It's lit while the item is on (a tick or tool item in the menu, or auto zoom).
+- It's lit while the item is on (a tick or tool item in the menu, auto zoom, or snapshot while it waits
+  for your drag: needs snapshot 0.11).
 - Careful with items like Quit, Delete Page, Fullscreen or Presentation Mode: they do exactly that.
 
 ## Settings (`settings.txt` in this folder)

@@ -1,4 +1,4 @@
--- Tool dock plugin for Xournal++  (v0.7.4)
+-- Tool dock plugin for Xournal++  (v0.8.2)
 -- Author: Wissam Jassim (written with Claude), 2026-11-17.
 -- Copyright (c) 2026 Wissam Jassim. MIT licence, see LICENSE in the repository root.
 -- SPDX-License-Identifier: MIT
@@ -16,7 +16,8 @@
 --   sets the size of the current tool (pen, laser pointer, highlighter ...), as the toolbar does.
 --   "+" opens the edit list: add or remove tools and colours, shape, buttons per row, size.
 --   "⇄" switches the shape: horizontal, vertical, rectangle.
---   Hold a tool, colour or thickness button (long press) or right-click it to remove it.
+--   Hold a tool, colour or thickness button (long press) or right-click it: a small window to
+--   move it earlier / later in the dock (tools and colours) or remove it.
 --
 -- HOW IT WORKS
 --   The dock is a GTK window made with LuaGObject. One GLib timer runs only while the dock or the
@@ -36,6 +37,13 @@
 --   Facts checked in this build (1.3.8+dev): app.getActionState("tool-color") is ARGB (0xFF......);
 --   app.changeToolColor on a tool without colour (select, eraser) raises "has no color capability",
 --   with tool = "pen" it works.
+--   LINE STYLES (0.8, checked live 1.3.8+dev): action "tool-pen-line-style" takes "plain", "dash",
+--   "dashdot", "dot"; getActionState gives the CURRENT tool's style ("none" for laser, eraser,
+--   highlighter, select: Xournal++'s Pen Options menu then ticks no style); the pen keeps its style
+--   meanwhile (app.getToolInfo("pen").lineStyle). A line style button switches to the pen first (keeps
+--   its drawing mode), then sets the style. Lit like Xournal++'s menu: only while the pen is the tool.
+--   MOVE WINDOW (0.8): not modal; a press that starts on the page (or anywhere off the dock and off
+--   the window itself) closes it.
 --
 -- SETTINGS
 --   settings.txt next to this file, lines KEY=value (see CFG). The plugin writes it itself.
@@ -52,6 +60,7 @@
 --   AUTO ZOOM (0.6): the "autozoom" button presses the autozoom plugin's menu entry "Auto zoom:
 --   ON / OFF" (found once in the menus, ~150 ms, then kept); it is lit while autozoom publishes
 --   XOPP_AUTOZOOM_ON=1 in the process environment (autozoom 0.13+; GLib.getenv, every 200 ms).
+--   0.8: "autozoomPause" presses "Auto zoom: pause zoom in / out", lit on XOPP_AUTOZOOM_PAUSED=1 (autozoom 0.16).
 
 local CFG = {
     TOOLS = {"pen", "laserPen", "selectObject", "eraser"},     -- tool buttons, in order
@@ -134,6 +143,14 @@ local CATALOGUE = {
     -- another plugin's menu entry (0.6): menu = its label, plugin = its folder, env = its ON flag
     {id = "autozoom",         menu = "Auto zoom: ON / OFF", plugin = "autozoom", env = "XOPP_AUTOZOOM_ON",
                               icon = "system-search-symbolic", label = "Auto zoom on / off"},
+    -- 0.8: autozoom 0.16's pause (no zoom in / out by itself, edge slide still works); lit while paused
+    {id = "autozoomPause",    menu = "Auto zoom: pause zoom in / out", plugin = "autozoom", env = "XOPP_AUTOZOOM_PAUSED",
+                              icon = "media-playback-pause-symbolic", label = "Auto zoom: pause zoom in / out"},
+    -- 0.7.5: preserve-view 2.8's carry ink (lit while it publishes XOPP_CARRYINK_ON=1) and clear
+    {id = "carryInk",         menu = "Carry ink: on / off", plugin = "preserve-view", env = "XOPP_CARRYINK_ON",
+                              icon = "edit-copy-symbolic", label = "Carry ink on / off"},
+    {id = "clearInk",         menu = "Clear page ink", plugin = "preserve-view",
+                              icon = "edit-clear-all-symbolic", label = "Clear page ink"},
     {id = "undo",             action = "undo",                        icon = "xopp-edit-undo",         label = "Undo"},
     {id = "redo",             action = "redo",                        icon = "xopp-edit-redo",         label = "Redo"},
     {id = "ruler",            draw = "tool-draw-line", helper = true,               icon = "xopp-draw-line",         label = "Straight lines (ruler)"},
@@ -143,6 +160,11 @@ local CATALOGUE = {
     {id = "setsquare",        action = "setsquare", toggle = true,                  icon = "xopp-setsquare",         label = "Set square"},
     {id = "compass",          action = "compass", toggle = true,                    icon = "xopp-compass",           label = "Compass"},
     {id = "newPage",          action = "new-page-after",              icon = "xopp-page-add",          label = "New page after this one"},
+    -- 0.8: the pen's line style (Xournal++'s own icons); lit = the pen's style now
+    {id = "linePlain",        lineStyle = "plain",   icon = "xopp-line-style-plain-with-pen",    label = "Standard line", tip = "Pen: standard line"},
+    {id = "lineDash",         lineStyle = "dash",    icon = "xopp-line-style-dash-with-pen",     label = "Dashed line",   tip = "Pen: dashed line"},
+    {id = "lineDashDot",      lineStyle = "dashdot", icon = "xopp-line-style-dash-dot-with-pen", label = "Dash-dot line", tip = "Pen: dash-dot line"},
+    {id = "lineDot",          lineStyle = "dot",     icon = "xopp-line-style-dot-with-pen",      label = "Dotted line",   tip = "Pen: dotted line"},
 }
 local BY_ID = {}
 for _, e in ipairs(CATALOGUE) do BY_ID[e.id] = e end
@@ -170,7 +192,9 @@ local function customText(c) return c.group .. "|" .. c.label .. "|" .. (c.key o
 -- the same name gets that one's icon.
 local CUSTOM_LOOK = {
     ["auto zoom: on / off"] = {icon = "system-search-symbolic", env = "XOPP_AUTOZOOM_ON"},
-    ["snapshot: drag a rectangle (on / off)"] = {icon = "camera-photo-symbolic"},
+    ["auto zoom: pause zoom in / out"] = {icon = "media-playback-pause-symbolic", env = "XOPP_AUTOZOOM_PAUSED"},
+    -- 0.8.2: lit while snapshot 0.11 waits for a drag (from the press until the copy is made)
+    ["snapshot: drag a rectangle (on / off)"] = {icon = "camera-photo-symbolic", env = "XOPP_SNAPSHOT_ON"},
     ["next page (keep view)"] = {icon = "go-next-symbolic"},
     ["previous page (keep view)"] = {icon = "go-previous-symbolic"},
     ["next page"] = {icon = "go-down-symbolic"},
@@ -190,6 +214,8 @@ local TICK_BOX_OF = {
     ["draw line"] = "ruler", ["draw spline"] = "drawSpline", ["shape recognizer"] = "shapeRecognizer",
     ["undo"] = "undo", ["redo"] = "redo", ["zoom in"] = "zoomIn", ["zoom out"] = "zoomOut",
     ["zoom to fit"] = "zoomFit", ["new page after"] = "newPage", ["auto zoom: on / off"] = "autozoom",
+    ["auto zoom: pause zoom in / out"] = "autozoomPause",
+    ["carry ink: on / off"] = "carryInk", ["clear page ink"] = "clearInk",
 }
 -- What a short text button shows: the end of the shortcut ("Ctrl+Alt+F8" -> "F8"), else the name.
 local function customShort(c)
@@ -243,6 +269,7 @@ local function available(id)
     if e == nil or type(app) ~= "table" then return false end
     if e.menu then return pluginInstalled(e.plugin) end
     if e.action then return app.activateAction ~= nil end
+    if e.lineStyle then return app.changeActionState ~= nil and type(app.C) == "table" and app.C.Tool_pen ~= nil end
     if e.draw then return app.changeActionState ~= nil and type(app.C) == "table" and app.C.Tool_pen ~= nil end
     return type(app.C) == "table" and app.C[e.const] ~= nil
 end
@@ -908,6 +935,17 @@ local function useTool(id)
         if not okA then log("command " .. id .. " failed: " .. tostring(errA)) end
         return
     end
+    if e.lineStyle then                  -- 0.8: pen first (its drawing mode stays), then the style
+        local tool
+        pcall(function() tool = app.getActionState("select-tool") end)
+        if tool ~= app.C.Tool_pen then
+            local okP, errP = pcall(app.changeActionState, "select-tool", app.C.Tool_pen)
+            if not okP then log("line style " .. id .. ": pen failed: " .. tostring(errP)) return end
+        end
+        local okL, errL = pcall(app.changeActionState, "tool-pen-line-style", e.lineStyle)
+        if not okL then log("line style " .. id .. " failed: " .. tostring(errL)) end
+        return
+    end
     if e.draw then
         local tool
         pcall(function() tool = app.getActionState("select-tool") end)
@@ -1183,19 +1221,73 @@ local function closeEdit()
     end
 end
 
+-- 0.8: move a tool or colour one place earlier (dir -1) or later (+1) in the dock order. Tools
+-- that this Xournal++ does not have are not on the dock: they are stepped over. Returns the list
+-- and the two places to swap, or nil when there is nowhere to go.
+local function moveTarget(it, dir)
+    local list, i
+    if it.kind == "tool" then list, i = CFG.TOOLS, indexOf(CFG.TOOLS, it.id)
+    elseif it.kind == "colour" then list, i = CFG.COLOURS, indexOf(CFG.COLOURS, it.colour)
+    else return nil end
+    if not i then return nil end
+    local j = i + dir
+    if it.kind == "tool" then
+        while list[j] ~= nil and not available(list[j]) do j = j + dir end
+    end
+    if list[j] == nil then return nil end
+    return list, i, j
+end
+
+local function moveItem(it, dir)
+    local list, i, j = moveTarget(it, dir)
+    if not list then return false end
+    list[i], list[j] = list[j], list[i]
+    log("moved " .. (it.kind == "tool" and it.id or ("colour " .. colourText(it.colour)))
+        .. (dir < 0 and " earlier" or " later"))
+    markDirty()
+    rebuildDock()
+    return true
+end
+
+-- The move buttons can be pressed only when there is a place to go.
+local function updateMoveButtons()
+    if not ask or not ask.back then return end
+    ask.back:set_sensitive(moveTarget(ask.item, -1) ~= nil)
+    ask.fwd:set_sensitive(moveTarget(ask.item, 1) ~= nil)
+end
+
+-- A held (or right-clicked) button: move it or remove it. The thickness button can only go.
 local function openAsk(it)
     closeAsk()
     local G = B.Gtk
+    local canMove = it.kind == "tool" or it.kind == "colour"
     local what = it.kind == "tool" and (entryOf(it.id) or {label = it.id}).label
                  or it.kind == "size" and "the line thickness button"
                  or ("the colour #" .. colourText(it.colour))
-    local win = utilityWindow("Remove?", true)
+    local win = utilityWindow(canMove and "Move or remove" or "Remove?", true)
     win:set_transient_for(dock.win)
     local box = G.Box {orientation = G.Orientation.HORIZONTAL, spacing = 8, margin = 8}
-    box:add(G.Label {label = "Remove " .. what .. " from the dock?"})
+    local back, fwd
+    if canMove then
+        local name = it.kind == "tool" and what or ("Colour #" .. colourText(it.colour))
+        box:add(G.Label {label = name})
+        box:add(G.Box {width_request = 6})
+        local vertical = CFG.SHAPE == "vertical"
+        back = G.ToggleButton.new_with_label(vertical and "\u{25B2} Move" or "\u{25C0} Move")
+        back:set_name("td_mv_back")
+        back:set_tooltip_text("One place earlier in the dock")
+        fwd = G.ToggleButton.new_with_label(vertical and "Move \u{25BC}" or "Move \u{25B6}")
+        fwd:set_name("td_mv_fwd")
+        fwd:set_tooltip_text("One place later in the dock")
+        box:add(back)
+        box:add(fwd)
+        box:add(G.Box {width_request = 6})
+    else
+        box:add(G.Label {label = "Remove " .. what .. " from the dock?"})
+    end
     local yes = G.ToggleButton.new_with_label("Remove")
     yes:set_name("td_rm_yes")
-    local no = G.ToggleButton.new_with_label("Cancel")
+    local no = G.ToggleButton.new_with_label(canMove and "Close" or "Cancel")
     no:set_name("td_rm_no")
     box:add(yes)
     box:add(no)
@@ -1207,7 +1299,8 @@ local function openAsk(it)
     if type(x) == "number" and type(h) == "number" then win:move(x, y + h + 40) end
     win:show_all()
     keepOnScreen(win)
-    ask = {win = win, yes = yes, no = no, item = it}
+    ask = {win = win, yes = yes, no = no, back = back, fwd = fwd, item = it}
+    updateMoveButtons()
 end
 
 local function removeItem(it)
@@ -1229,6 +1322,7 @@ local function removeItem(it)
     rebuildDock()
 end
 
+-- The window stays open after a move, so the button can go on moving.
 local function pollAsk()
     if not ask then return end
     if not ask.win:get_visible() then ask = nil return end
@@ -1238,6 +1332,12 @@ local function pollAsk()
         removeItem(it)
     elseif ask.no:get_active() then
         closeAsk()
+    elseif ask.back and (ask.back:get_active() or ask.fwd:get_active()) then
+        local dir = ask.back:get_active() and -1 or 1
+        ask.back:set_active(false)
+        ask.fwd:set_active(false)
+        moveItem(ask.item, dir)
+        updateMoveButtons()
     end
 end
 
@@ -1390,6 +1490,45 @@ local function pollButtons(now, gx, gy, rightDown, b1)
     return false
 end
 
+-- 0.8: true when a press at (gx, gy) (dock window coordinates) is on the move window. Unknown
+-- places count as on it (the window stays open).
+local function pressOverAsk(gx, gy)
+    if not ask or type(gx) ~= "number" or type(gy) ~= "number" then return true end
+    local dx, dy = dock.win:get_position()
+    if type(dx) ~= "number" then return true end
+    local sx, sy = dx + gx, dy + gy
+    local x, y, w, h
+    pcall(function()
+        local r = ask.win:get_window():get_frame_extents()       -- with its title bar
+        x, y, w, h = r.x, r.y, r.width, r.height
+    end)
+    if type(x) ~= "number" or type(w) ~= "number" or w <= 0 then
+        local ax, ay = ask.win:get_position()
+        local aw, ah = ask.win:get_size()
+        if type(ax) ~= "number" or type(aw) ~= "number" then return true end
+        x, y, w, h = ax, ay - 40, aw, ah + 40
+    end
+    return sx >= x and sx < x + w and sy >= y and sy < y + h
+end
+
+-- 0.8.1: is the pointer over the dock (16 px margin), or was it in the last 500 ms? gx, gy are in
+-- dock window coordinates. Unknown position: yes (safe side). The dock size is read again every
+-- second (it changes only when buttons are added or the shape changes).
+local nearHook = nil                      -- test hook: true / false overrides the answer
+local function pointerNear(gx, gy, now)
+    if nearHook ~= nil then return nearHook end
+    if type(gx) ~= "number" or type(gy) ~= "number" then return true end
+    if not dock.size or now >= (dock.sizeAt or 0) + 1000 then
+        local okS, w, h = pcall(function() return dock.win:get_size() end)
+        dock.size = (okS and type(w) == "number" and type(h) == "number") and {w = w, h = h} or nil
+        dock.sizeAt = now
+    end
+    local s = dock.size
+    if not s then return true end
+    if gx >= -16 and gy >= -16 and gx < s.w + 16 and gy < s.h + 16 then dock.nearUntil = now + 500 end
+    return now < (dock.nearUntil or 0)
+end
+
 local function pollDock(now)
     if not dock then return end
     if not dock.win:get_visible() then     -- closed with its X
@@ -1431,23 +1570,35 @@ local function pollDock(now)
                 dock.pressOnDock = gx >= 0 and gy >= 0 and gx < w and gy < h
             end
         end
+        -- 0.8: writing on the page (a press off the dock and off the move window) closes that window
+        if ask and dock.pressOnDock == false and not pressOverAsk(gx, gy) then
+            closeAsk()
+            log("move window closed: a press on the page")
+        end
     end
     local g = dock.grip
     local onDock = dock.pressOnDock ~= false
+    -- 0.8.1 (speed): with nothing pressed, the buttons are asked every 150 ms only while the pointer
+    -- is over the dock (or was, in the last 500 ms), else once every 1.5 s (safety). A click needs
+    -- the pointer on the dock. Load test 2026-11-21: asking ~25 buttons every 150 ms kept
+    -- Xournal++'s main thread about 5 % busy while nothing happened.
+    local idleLook = not down and not dock.wasDown and (not dock.nextLook or now >= dock.nextLook)
+                     and (pointerNear(gx, gy, now) or now >= (dock.lastLook or 0) + 1500)
     local look = pressInput ~= nil or gripInput ~= nil or (g ~= nil and g.drag ~= nil)
                  or ((down or dock.wasDown) and onDock)
-                 or (not down and not dock.wasDown and (not dock.nextLook or now >= dock.nextLook))
+                 or idleLook
                  -- safety: a press off the dock that seems to last (a pen driver that reports the tip
                  -- as down) must not freeze the dock: look every 500 ms then (2 ms per 0.5 s)
                  or (down and not onDock and now >= (dock.nextLook or 0) + 350)
     dock.wasDown = down
     if look then
         dock.looks = (dock.looks or 0) + 1
-        dock.nextLook = now + 150
+        dock.nextLook, dock.lastLook = now + 150, now
         if pollButtons(now, gx, gy, rightDown, b1) then return end
     end
+    -- lit buttons: every 300 ms (0.8.1; was 200 ms)
     if not dock.nextHl or now >= dock.nextHl then
-        dock.nextHl = now + 200
+        dock.nextHl = now + 300
         local tool, colour, size = currentState()
         if tool ~= dock.shownTool or colour ~= dock.shownColour then
             dock.shownTool, dock.shownColour = tool, colour
@@ -1457,11 +1608,18 @@ local function pollDock(now)
                 elseif it.kind == "colour" then setOn(it.widget, it.colour == colour) end
             end
         end
+        local penStyle, penRead = nil, false
         for _, it in ipairs(dock.buttons) do          -- on / off commands: lit while on
             local e = it.kind == "tool" and (it.entry or BY_ID[it.id])
-            if e and (e.toggle or e.draw or e.env or e.custom) then
+            if e and (e.toggle or e.draw or e.env or e.custom or e.lineStyle) then
                 local okT, v
-                if e.custom then okT, v = pcall(customOn, e, customIndex(it.id))
+                if e.lineStyle then                   -- 0.8: the current tool's line style ("none" off the pen)
+                    if not penRead then
+                        penRead = true
+                        pcall(function() penStyle = app.getActionState("tool-pen-line-style") end)
+                    end
+                    okT, v = true, penStyle == e.lineStyle
+                elseif e.custom then okT, v = pcall(customOn, e, customIndex(it.id))
                 elseif e.env then okT, v = pcall(function() return B.GLib.getenv(e.env) == "1" end)
                 else okT, v = pcall(app.getActionState, e.action or e.draw) end
                 local on = okT and v == true
@@ -1636,30 +1794,53 @@ fillEdit = function()
 
     local on = {}
     for _, id in ipairs(CFG.TOOLS) do on[id] = true end
-    local function group(title, commands)
+    -- which edit list section an entry is in: "tools", "helpers" or "lines" (0.8: pen line styles,
+    -- one per row with Xournal++'s own icon)
+    local function sectionOf(e)
+        if e.lineStyle then return "lines" end
+        if e.action ~= nil or e.helper == true or e.menu ~= nil then return "helpers" end
+        return "tools"
+    end
+    local function group(title, section)
         heading(title)
         local n = 0
         for _, e in ipairs(CATALOGUE) do
-            if (e.action ~= nil or e.helper == true or e.menu ~= nil) == commands and available(e.id) then
-                local cb = G.CheckButton.new_with_label(e.label)
+            if sectionOf(e) == section and available(e.id) then
+                local cb
+                if section == "lines" then
+                    cb = G.CheckButton()
+                    local box = G.Box {orientation = G.Orientation.HORIZONTAL, spacing = 8}
+                    local okI, has = pcall(function() return G.IconTheme.get_default():has_icon(e.icon) end)
+                    if okI and has then
+                        local img = G.Image.new_from_icon_name(e.icon, G.IconSize.LARGE_TOOLBAR)
+                        img:set_pixel_size(22)
+                        box:add(img)
+                    end
+                    box:add(G.Label {label = e.label})
+                    cb:add(box)
+                    grid:attach(cb, 0, row + n, 2, 1)
+                else
+                    cb = G.CheckButton.new_with_label(e.label)
+                    grid:attach(cb, n % 2, row + n // 2, 1, 1)
+                end
                 cb:set_name("td_e_tool_" .. e.id)
                 cb:set_active(on[e.id] == true)
-                grid:attach(cb, n % 2, row + n // 2, 1, 1)
                 edit.tools[e.id] = cb
                 shown.tools[e.id] = on[e.id] == true
                 n = n + 1
             end
         end
-        row = row + (n + 1) // 2
+        row = row + (section == "lines" and n or (n + 1) // 2)
     end
-    group("Tools (ticked = on the dock)", false)
-    group("Zoom, undo and drawing helpers (ticked = on the dock)", true)
+    group("Tools (ticked = on the dock)", "tools")
+    group("Zoom, undo and drawing helpers (ticked = on the dock)", "helpers")
     edit.sizeBtn = G.CheckButton.new_with_label("Line thickness button (5 sizes)")
     edit.sizeBtn:set_name("td_e_sizebtn")
     edit.sizeBtn:set_active(CFG.SIZE_BUTTON)
     shown.sizeBtn = CFG.SIZE_BUTTON
     grid:attach(edit.sizeBtn, 0, row, 2, 1)
     row = row + 1
+    group("Pen line style (ticked = on the dock)", "lines")
 
     heading("Custom buttons (any menu entry or shortcut)")
     edit.cuRm = {}
@@ -2041,10 +2222,11 @@ if rawget(_G, "TOOLDOCK_TEST") then
                           setPressInput = function(f) pressInput = f end,
                           setGripInput = function(f) gripInput = f end,
                           setPointerInput = function(f) pointerInput = f end,
+                          setNear = function(v) nearHook = v end,
                           pluginInstalled = pluginInstalled, CUSTOM = CUSTOM, customIndex = customIndex,
                           plainLabel = plainLabel, parseCustom = parseCustom, entryOf = entryOf,
                           addCustom = addCustom, removeCustom = removeCustom, useTool = useTool,
                           cuPick = function() return cuPick end, listMenuEntries = listMenuEntries,
                           customOn = customOn, TICK_BOX_OF = TICK_BOX_OF, naturalSize = naturalSize,
-                          pollEdit = pollEdit}
+                          pollEdit = pollEdit, moveTarget = moveTarget, moveItem = moveItem}
 end

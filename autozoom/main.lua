@@ -1,5 +1,5 @@
 -- Auto Zoom for Xournal++: zooms in where the pen writes, zooms out when writing stops.
--- Author: Wissam Jassim (written with Claude), 2026-11-13. Version 0.15: 2026-11-19.
+-- Author: Wissam Jassim (written with Claude), 2026-11-13. Version 0.16.1: 2026-11-21.
 -- Copyright (c) 2026 Wissam Jassim. MIT licence, see LICENSE in the repository root.
 -- SPDX-License-Identifier: MIT
 --
@@ -10,6 +10,7 @@
 --   Ctrl+Alt+F5   auto zoom ON / OFF
 --   Ctrl+Alt+F6   zoom in at the pen now / zoom out now   (only while ON)
 --   Ctrl+Alt+F7   settings panel (a small floating window; every setting, saved by itself)
+--   (no key)      pause zoom in / out (KEY_PAUSE; also a button in the panel and on the tool dock)
 --
 -- HOW IT BEHAVES (while ON)
 --   * Zoom in: the pen hovers still for a moment, or you simply start writing. The spot
@@ -23,6 +24,10 @@
 --     it was. If you went to another page meanwhile, it returns to the same place there.
 --   * You change the zoom yourself while zoomed in (toolbar, tablet dial, Ctrl+wheel):
 --     the plugin takes your zoom as the new zoom level and remembers it.
+--   * Pause (0.16): the zoom stays as it is, no zoom in and no zoom out by itself. The edge
+--     slide and the follow glide keep working (the edge slide also when not zoomed in).
+--     Ctrl+Alt+F6 still zooms in / out. Pause while OFF switches auto zoom on, paused.
+--     Switching OFF ends the pause; every start of Xournal++ is unpaused.
 --   * All movement uses a critically damped spring: soft start, soft stop, no overshoot,
 --     and it can change direction at any moment without a jump.
 --
@@ -89,6 +94,7 @@ local CFG = {
     KEY_TOGGLE      = "<Control><Alt>F5",   -- auto zoom ON / OFF
     KEY_NOW         = "<Control><Alt>F6",   -- zoom in at the pen now / zoom out now
     KEY_PANEL       = "<Control><Alt>F7",   -- settings panel
+    KEY_PAUSE       = "none",               -- pause zoom in / out (0.16; F5-F12 are taken by the other plugins)
 }
 
 -- The settings panel: one row each. `mult` turns the stored value into the shown one.
@@ -309,10 +315,23 @@ local function publishOn(on)
     pcall(function() B.GLib.setenv("XOPP_AUTOZOOM_ON", on and "1" or "0", true) end)
 end
 
+-- 0.16: pause. While paused the zoom never changes by itself (no zoom in, no zoom out); the edge
+-- slide and the follow glide keep working, the edge slide also when not zoomed in. Published as
+-- XOPP_AUTOZOOM_PAUSED = 1 / 0 for tool-dock. Not saved: every start is unpaused; OFF ends it.
+local paused = false
+local publishedPaused = nil
+local function publishPaused()
+    if paused == publishedPaused or not B then return end
+    publishedPaused = paused
+    pcall(function() B.GLib.setenv("XOPP_AUTOZOOM_PAUSED", paused and "1" or "0", true) end)
+end
+
 local function setMode(m, why)
     if st.mode ~= m then log(st.mode .. " -> " .. m .. (why and ("  (" .. why .. ")") or "")) end
     st.mode = m
+    if m == "OFF" then paused = false end
     publishOn(m ~= "OFF")
+    publishPaused()
 end
 
 -- Finds the page area and the pointer. Returns true, or false + reason.
@@ -912,7 +931,7 @@ local function tick()
         end
         if alive > CFG.STALE_MS then st.anchor = nil end
         local sliding = false
-        if CFG.PAN and CFG.PAN_IDLE then
+        if CFG.PAN and (CFG.PAN_IDLE or paused) then
             sliding = edgeSlide(sp, pen, now, dts, alive) or (pen ~= nil and pen.inside and inEdge(sp, pen))
         end
         st.idleFast = sliding
@@ -924,7 +943,10 @@ local function tick()
         elseif not down then
             st.anchor = nil
         end
-        if CFG.WRITE_TRIGGER and (st.writeAcc or 0) >= CFG.WRITE_MS and down then
+        if paused then
+            -- no zoom in; a fresh start for the hover wait once the pause ends
+            st.writeAcc, st.anchor = 0, nil
+        elseif CFG.WRITE_TRIGGER and (st.writeAcc or 0) >= CFG.WRITE_MS and down then
             startIn(pen, "writing")
         elseif CFG.HOVER_TRIGGER and st.armed and st.anchor and now - st.anchor.t >= CFG.DWELL_MS
                and alive <= CFG.ALIVE_MS then
@@ -956,11 +978,10 @@ local function tick()
         local _, byHand = camPos(sp)
         if byHand then st.fT, st.ink = nil, nil end
         if pen and pen.down then
-            -- tip down: nothing moves
-            if down then
-                st.idleSince = now
-                st.ink = {x = pen.x, y = pen.y}
-            end
+            -- tip down: nothing moves. Any press on the page counts as busy, also one that is not
+            -- writing (a Select Rectangle drag for a snapshot), so no zoom out waits for its release.
+            if pen.inside then st.idleSince = now end
+            if down then st.ink = {x = pen.x, y = pen.y} end
             st.fT, st.pvx, st.pvy = nil, 0, 0
         else
             if pen and (not st.rest or dist(pen, st.rest) > CFG.MOVE_PX) then
@@ -974,7 +995,11 @@ local function tick()
                 st.idleSince = now
             end
         end
-        if now - (st.idleSince or now) >= CFG.IDLE_MS then startOut("idle") end
+        if paused then
+            st.idleSince = now      -- no zoom out; the wait starts again once the pause ends
+        elseif now - (st.idleSince or now) >= CFG.IDLE_MS then
+            startOut("idle")
+        end
 
     elseif st.mode == "OUT" then
         if down then
@@ -1169,6 +1194,14 @@ local function openPanel()
     grid:attach(p.onBtn, 0, row, 1, 1)
     grid:attach(p.state, 1, row, 2, 1)
     row = row + 1
+    p.pauseBtn = G.ToggleButton.new_with_label("Pause zoom in / out")
+    p.pauseBtn:set_name("az_pause")
+    p.pauseBtn:set_tooltip_text("Pressed: the zoom stays as it is. No zoom in and no zoom out by itself.\n"
+        .. "The edge slide and the follow glide keep working (the edge slide also when not zoomed in).\n"
+        .. "Ctrl+Alt+F6 still zooms in or out. Press again and auto zoom zooms by itself again.\n"
+        .. "If auto zoom is off, this switches it on, paused. Switching it off ends the pause.")
+    grid:attach(p.pauseBtn, 0, row, 1, 1)
+    row = row + 1
 
     -- The info text of a setting shows on its caption and on the small (i) mark beside it,
     -- not on the slider (a text box over the slider is in the way while dragging).
@@ -1256,6 +1289,8 @@ local function openPanel()
     push(true)
     p.shownOn = st.mode ~= "OFF"
     p.onBtn:set_active(p.shownOn)
+    p.shownPaused = paused
+    p.pauseBtn:set_active(paused)
 
     if CFG.PANEL_W > 0 and CFG.PANEL_H > 0 then win:set_default_size(CFG.PANEL_W, CFG.PANEL_H) end
     if CFG.PANEL_X >= 0 and CFG.PANEL_Y >= 0 then win:move(CFG.PANEL_X, CFG.PANEL_Y) end
@@ -1320,10 +1355,20 @@ local function openPanel()
             p.labelSet = true
         end
         p.shownOn = on
+        -- pause button (after on / off: switching off ends the pause)
+        local pa = p.pauseBtn:get_active()
+        if pa ~= p.shownPaused and pa ~= paused then autozoomPause() end
+        if p.pauseBtn:get_active() ~= paused then p.pauseBtn:set_active(paused) end
+        if p.shownPaused ~= paused or not p.pauseLabelSet then
+            p.pauseBtn:set_label(paused and "Zoom paused" or "Pause zoom in / out")
+            p.pauseLabelSet = true
+        end
+        p.shownPaused = paused
         local text = STATE_TEXT[st.mode] or st.mode
         if st.mode == "ZOOMED" and st.saved then
             text = string.format("zoomed in  x %.2f", app.getZoom() / st.saved.zoom)
         end
+        if paused and st.mode ~= "OFF" then text = text .. ", zoom paused" end
         if st.scaleBad then text = text .. "  (layout check failed, see the log)" end
         if text ~= p.stateText then
             p.state:set_label(text)
@@ -1361,6 +1406,15 @@ function autozoomNow()
     if not ok then log("key error: " .. tostring(e)) end
 end
 
+-- 0.16: pause zoom in / out (edge slide and follow keep working). While OFF: switch on, paused.
+function autozoomPause()
+    if st.mode == "OFF" and not turnOn(false) then return end
+    paused = not paused
+    publishPaused()
+    log(paused and "zoom paused" or "zoom pause ended")
+    toast(paused and "Auto zoom: zoom paused (edge slide still works)" or "Auto zoom: zooms by itself again")
+end
+
 function autozoomPanel()
     local ok, e = pcall(openPanel)
     if not ok then
@@ -1390,6 +1444,8 @@ function initUi()
                     ["accelerator"] = accel("KEY_NOW")})
     app.registerUi({["menu"] = "Auto zoom: settings panel", ["callback"] = "autozoomPanel",
                     ["accelerator"] = accel("KEY_PANEL")})
+    app.registerUi({["menu"] = "Auto zoom: pause zoom in / out", ["callback"] = "autozoomPause",
+                    ["accelerator"] = accel("KEY_PAUSE")})
     -- start by itself, once the main window exists (a few tries)
     if (CFG.START_ON or CFG.PANEL_AT_START) and bindings() then
         local tries = 0

@@ -29,6 +29,7 @@ function app.registerUi() end
 function app.openDialog(m) CALLS[#CALLS + 1] = "dialog " .. tostring(m) end
 function app.getActionState(a)
     if a == "select-tool" then return TOOL end
+    if a == "tool-pen-line-style" then return TOOL == 1 and PENSTYLE or "none" end   -- the current tool's
     if a == "tool-size" or a == "tool-pen-size" then return SIZE end
     if a == "tool-color" then
         if NOCOLOUR[TOOL] then return 0xFFFFFFFF end
@@ -39,6 +40,7 @@ function app.changeActionState(a, v)
     CALLS[#CALLS + 1] = "state " .. a .. "=" .. tostring(v)
     if a == "select-tool" then TOOL = v end
     if a == "tool-size" or a == "tool-pen-size" then SIZE = v end
+    if a == "tool-pen-line-style" then PENSTYLE = v end
 end
 function app.changeToolColor(o)
     CALLS[#CALLS + 1] = string.format("colour %06X tool=%s sel=%s", o.color, tostring(o.tool), tostring(o.selection))
@@ -46,7 +48,8 @@ function app.changeToolColor(o)
     if NOCOLOUR[TOOL] then error("tool has no color capability") end
     if TOOL == 1 then PENCOLOR = o.color else COLOR = o.color end
 end
-function app.getToolInfo(t) if t == "pen" then return {color = PENCOLOR} end return {} end
+PENSTYLE = "plain"
+function app.getToolInfo(t) if t == "pen" then return {color = PENCOLOR, lineStyle = PENSTYLE} end return {} end
 STATES = {["grid-snapping"] = false}
 DRAWS = {"tool-draw-line", "tool-draw-rectangle", "tool-draw-ellipse", "tool-draw-arrow", "tool-draw-double-arrow",
          "tool-draw-coordinate-system", "tool-draw-spline", "tool-draw-shape-recognizer"}
@@ -79,6 +82,9 @@ end
 
 dofile((os.getenv("LOCALAPPDATA") or ".") .. [[\xournalpp\plugins\tool-dock\main.lua]])
 local I = TOOLDOCK_INTERNALS
+-- 0.8.1: buttons are asked only with the pointer near the dock; these tests click with set_active
+-- while the real pointer is anywhere, so count it as near (section I tests the real rule)
+I.setNear(true)
 local lgo = require("LuaGObject")
 local GLib, Gtk = lgo.GLib, lgo.require("Gtk", "3.0")
 Gtk.init()
@@ -175,7 +181,8 @@ end)
 at(400, function()
     check("C edit list opens", editWin() ~= nil and editWin():get_visible())
     check("C plus springs back", not find(dockWin(), "td_plus"):get_active())
-    check("C 33 ticks (tools this fake app knows + commands + drawing modes + auto zoom)", count(editWin(), "td_e_tool_") == 33, count(editWin(), "td_e_tool_"))
+    check("C 40 ticks (tools this fake app knows + commands + drawing modes + auto zoom on / off, pause + carry ink, clear + 4 line styles)", count(editWin(), "td_e_tool_") == 40, count(editWin(), "td_e_tool_"))
+    check("C line style ticks, unticked", find(editWin(), "td_e_tool_lineDash") ~= nil and not find(editWin(), "td_e_tool_lineDash"):get_active())
     check("C eraser ticked", find(editWin(), "td_e_tool_eraser"):get_active())
     find(editWin(), "td_e_tool_eraser"):set_active(false)
 end)
@@ -263,6 +270,120 @@ end)
 at(800, function()
     check("D long press on + does nothing", I.ask() == nil)
     FAKE.td_plus = nil
+    I.setPressInput(nil)
+end)
+-- D2 (0.8). line style buttons; move a tool and a colour with the hold window
+local function toolsText() return table.concat(I.CFG.TOOLS, ",") end
+at(100, function()
+    I.CFG.TOOLS = {"pen", "laserPen", "lineDash", "lineDot"}
+    I.rebuildDock()
+    check("D2 line style buttons on the dock", find(dockWin(), "td_tool_lineDash") ~= nil and find(dockWin(), "td_tool_lineDot") ~= nil)
+    TOOL = 2                                                -- eraser
+    find(dockWin(), "td_tool_lineDash"):set_active(true)
+end)
+at(250, function()
+    check("D2 dashed: pen + dashed line", TOOL == 1 and PENSTYLE == "dash", TOOL .. " " .. PENSTYLE .. " | " .. lastCalls(2))
+end)
+at(400, function()
+    check("D2 dashed lit on the pen", find(dockWin(), "td_tool_lineDash"):get_style_context():has_class("td-on"))
+    check("D2 dotted not lit", not find(dockWin(), "td_tool_lineDot"):get_style_context():has_class("td-on"))
+    TOOL = 23                                               -- laser: like Xournal++'s menu, no style lit
+end)
+at(400, function()
+    check("D2 no style lit on the laser", not find(dockWin(), "td_tool_lineDash"):get_style_context():has_class("td-on"))
+    check("D2 the pen keeps dashed meanwhile", PENSTYLE == "dash")
+    TOOL = 1
+end)
+at(400, function()
+    check("D2 dashed lit again on the pen", find(dockWin(), "td_tool_lineDash"):get_style_context():has_class("td-on"))
+    I.setPressInput(function(name) local f = FAKE[name] or {} return f.held or false, f.right or false end)
+    FAKE.td_tool_laserPen = {right = true}
+end)
+at(200, function()
+    FAKE.td_tool_laserPen = nil
+    local a = I.ask()
+    check("D2 right-click opens the move window", a ~= nil and find(a.win, "td_mv_back") ~= nil and find(a.win, "td_mv_fwd") ~= nil)
+    check("D2 row dock: arrows left / right", find(a.win, "td_mv_back"):get_label() == "\u{25C0} Move", find(a.win, "td_mv_back"):get_label())
+    find(a.win, "td_mv_fwd"):set_active(true)
+end)
+at(250, function()
+    check("D2 laser one place later", toolsText() == "pen,lineDash,laserPen,lineDot", toolsText())
+    check("D2 window stays open", I.ask() ~= nil and I.ask().win:get_visible())
+    check("D2 dock shows the new order", find(dockWin(), "td_tool_laserPen") ~= nil)
+    find(I.ask().win, "td_mv_fwd"):set_active(true)
+end)
+at(250, function()
+    check("D2 laser last", toolsText() == "pen,lineDash,lineDot,laserPen", toolsText())
+    check("D2 Move later off at the end", not find(I.ask().win, "td_mv_fwd"):get_sensitive())
+    check("D2 Move earlier on", find(I.ask().win, "td_mv_back"):get_sensitive())
+    find(I.ask().win, "td_mv_back"):set_active(true)
+end)
+at(250, function()
+    check("D2 back one place", toolsText() == "pen,lineDash,laserPen,lineDot", toolsText())
+    -- a press on the move window itself keeps it open
+    local ax, ay = I.ask().win:get_position()
+    local dx, dy = dockWin():get_position()
+    local aw, ah = I.ask().win:get_size()
+    PRESS = {ax - dx + aw // 2, ay - dy + ah // 2}
+    I.setPointerInput(function() return PRESS[1], PRESS[2], PRESS[3] or false, false end)
+    PRESS[3] = true
+end)
+at(150, function()
+    PRESS[3] = false
+end)
+at(150, function()
+    check("D2 a press on the move window keeps it", I.ask() ~= nil)
+    PRESS = {-3000, -3000, true}                            -- a press on the page
+end)
+at(150, function()
+    PRESS[3] = false
+end)
+at(150, function()
+    check("D2 a press on the page closes the move window", I.ask() == nil)
+    check("D2 logged", readFile(TOOLDOCK_LOG_FILE):find("move window closed", 1, true) ~= nil)
+    I.setPointerInput(nil)
+    FAKE.td_tool_laserPen = {right = true}
+end)
+at(200, function()
+    FAKE.td_tool_laserPen = nil
+    find(I.ask().win, "td_rm_no"):set_active(true)
+end)
+at(250, function()
+    check("D2 Close closes, laser kept", I.ask() == nil and toolsText():find("laserPen", 1, true) ~= nil)
+    FAKE.td_colour_1 = {right = true}                       -- first colour: red (black was removed)
+end)
+at(200, function()
+    FAKE.td_colour_1 = nil
+    local a = I.ask()
+    check("D2 colour: move window, earlier off", a ~= nil and not find(a.win, "td_mv_back"):get_sensitive())
+    find(a.win, "td_mv_fwd"):set_active(true)
+end)
+at(250, function()
+    check("D2 colour moved later", I.CFG.COLOURS[2] == 0xE00000, string.format("%06X", I.CFG.COLOURS[1]))
+    find(I.ask().win, "td_mv_back"):set_active(true)        -- back, for the checks below
+end)
+at(250, function()
+    check("D2 colour back first", I.CFG.COLOURS[1] == 0xE00000)
+    find(I.ask().win, "td_rm_no"):set_active(true)
+    FAKE.td_size = {right = true}
+end)
+at(200, function()
+    FAKE.td_size = nil
+    local a = I.ask()
+    check("D2 thickness button: remove only, no move", a ~= nil and find(a.win, "td_mv_fwd") == nil)
+    find(a.win, "td_rm_no"):set_active(true)
+    I.CFG.SHAPE = "vertical"
+    I.rebuildDock()
+    FAKE.td_tool_pen = {right = true}
+end)
+at(200, function()
+    FAKE.td_tool_pen = nil
+    local a = I.ask()
+    check("D2 column dock: arrows up / down", a ~= nil and find(a.win, "td_mv_back"):get_label() == "\u{25B2} Move"
+          and find(a.win, "td_mv_fwd"):get_label() == "Move \u{25BC}")
+    find(a.win, "td_rm_no"):set_active(true)
+    I.CFG.SHAPE = "horizontal"
+    I.rebuildDock()
     I.setPressInput(nil)
 end)
 -- E. saved file, empty dock, missing tool, off screen, close
@@ -461,6 +582,7 @@ at(250, function()
     check("I Pen button = freehand: mode off", TOOL == 1 and MODE[1] == nil, tostring(MODE[1]))
     local d = I.dock()
     local P = {x = -60, y = -60, b1 = false}
+    I.setNear(nil)
     I.setPointerInput(function() return P.x, P.y, P.b1, false end)
     I.tick()
     P.b1 = true                                          -- pen down on the page
@@ -482,6 +604,28 @@ at(250, function()
     I.tick() I.tick() I.tick()
     check("I press on the dock: buttons asked at every tick", (d.looks or 0) >= n0 + 3, (d.looks or 0) - n0)
     P.b1 = false I.tick()
+    -- 0.8.1: nothing pressed, pointer away from the dock: no look at 150 ms, one safety look at 1.5 s
+    local function nowMs() return GLib.get_monotonic_time() / 1000 end
+    P.x, P.y = -60, -60 d.nearUntil = 0 I.tick()
+    n0 = d.looks or 0
+    for k = 1, 20 do d.nextLook, d.lastLook = nowMs() - 1, nowMs() I.tick() end
+    check("I pointer off the dock, nothing pressed: no button asked", (d.looks or 0) == n0, (d.looks or 0) - n0)
+    d.nextLook, d.lastLook = nowMs() - 1, nowMs() - 1600 I.tick()
+    check("I pointer off the dock: one safety look after 1.5 s", (d.looks or 0) == n0 + 1, (d.looks or 0) - n0)
+    n0 = d.looks
+    P.x, P.y = 10, 10
+    d.nextLook, d.lastLook = nowMs() - 1, nowMs() I.tick()
+    check("I pointer over the dock: buttons asked (every 150 ms)", (d.looks or 0) == n0 + 1, (d.looks or 0) - n0)
+    P.x, P.y = -200, 10
+    d.nextLook, d.lastLook = nowMs() - 1, nowMs() I.tick()
+    check("I pointer just left the dock: still asked for 0.5 s", (d.looks or 0) == n0 + 2, (d.looks or 0) - n0)
+    d.nearUntil = nowMs() - 1
+    d.nextLook, d.lastLook = nowMs() - 1, nowMs() I.tick()
+    check("I pointer gone for 0.5 s: not asked", (d.looks or 0) == n0 + 2, (d.looks or 0) - n0)
+    P.x, P.y = -12, 5                                    -- inside the 16 px margin
+    d.nextLook, d.lastLook = nowMs() - 1, nowMs() I.tick()
+    check("I pointer 12 px left of the dock: counts as over it", (d.looks or 0) == n0 + 3, (d.looks or 0) - n0)
+    I.setNear(true)
     I.setPointerInput(nil)
     find(dockWin(), "td_plus"):set_active(true)
 end)
@@ -515,8 +659,18 @@ azItem.on_activate = function()
     GLib.setenv("XOPP_AUTOZOOM_ON", (GLib.getenv("XOPP_AUTOZOOM_ON") == "1") and "0" or "1", true)
 end
 menu:append(azItem)
+local PZ = {n = 0}
+local pzItem = Gtk.MenuItem.new_with_label("Auto zoom: pause zoom in / out")     -- autozoom 0.16, no key
+pzItem.on_activate = function()
+    PZ.n = PZ.n + 1
+    GLib.setenv("XOPP_AUTOZOOM_PAUSED", (GLib.getenv("XOPP_AUTOZOOM_PAUSED") == "1") and "0" or "1", true)
+end
+menu:append(pzItem)
 local snapItem = withKey(Gtk.MenuItem.new_with_label("Snapshot: drag a rectangle (on / off)"), 65477, {CONTROL_MASK = true, MOD1_MASK = true})
-snapItem.on_activate = function() SNAP.n = SNAP.n + 1 end
+snapItem.on_activate = function()      -- snapshot 0.11 publishes XOPP_SNAPSHOT_ON while it waits for a drag
+    SNAP.n = SNAP.n + 1
+    GLib.setenv("XOPP_SNAPSHOT_ON", (GLib.getenv("XOPP_SNAPSHOT_ON") == "1") and "0" or "1", true)
+end
 menu:append(snapItem)
 menu:append(withKey(Gtk.MenuItem.new_with_label("Tool dock: show / hide"), 65481, {CONTROL_MASK = true, MOD1_MASK = true}))
 menu:append(Gtk.MenuItem.new_with_label("Check Page Step"))      -- Plugin menu: listed without a key
@@ -541,7 +695,9 @@ mwin:show_all()
 at(300, function()
     check("J no 0.6 keys", I.registerKeys == nil and I.KEYS == nil)
     GLib.setenv("XOPP_AUTOZOOM_ON", "0", true)
-    I.CFG.TOOLS = {"pen", "autozoom"}
+    GLib.setenv("XOPP_AUTOZOOM_PAUSED", "0", true)
+    GLib.setenv("XOPP_SNAPSHOT_ON", "0", true)
+    I.CFG.TOOLS = {"pen", "autozoom", "autozoomPause"}
     toolDockToggle()
 end)
 at(400, function()
@@ -553,6 +709,18 @@ at(500, function()
     check("J click presses the autozoom menu entry", AZ.n == 1 and GLib.getenv("XOPP_AUTOZOOM_ON") == "1", AZ.n)
     local b = find(dockWin(), "td_tool_autozoom")
     check("J button lit while auto zoom is on", b and b:get_style_context():has_class("td-on"))
+    local pb = find(dockWin(), "td_tool_autozoomPause")
+    check("J pause button on the dock, not lit", pb ~= nil and not pb:get_style_context():has_class("td-on"))
+    if pb then pb:set_active(true) end
+end)
+at(500, function()
+    local pb = find(dockWin(), "td_tool_autozoomPause")
+    check("J pause click presses autozoom's pause menu entry", PZ.n == 1 and GLib.getenv("XOPP_AUTOZOOM_PAUSED") == "1", PZ.n)
+    check("J pause button lit while paused", pb and pb:get_style_context():has_class("td-on"))
+    I.CFG.TOOLS = {"pen", "autozoom"}
+    toolDockToggle() toolDockToggle()
+end)
+at(400, function()
     find(dockWin(), "td_plus"):set_active(true)
 end)
 at(500, function()
@@ -563,7 +731,7 @@ at(500, function()
     for i, c in ipairs(l) do s[i] = c.group .. "|" .. c.label .. "|" .. tostring(c.key) end
     check("J menu list: Plugin entries + entries with a key; tool dock's own and tick-box ones left out",
           #l == 4 and s[1] == "Plugin|Snapshot: drag a rectangle (on / off)|Ctrl+Alt+F8" and s[2] == "Plugin|Check Page Step|nil"
-          and s[3] == "Edit|Cut|Ctrl+X" and s[4] == "Edit|Grid Snapping|Ctrl+G" and hidden == 2,
+          and s[3] == "Edit|Cut|Ctrl+X" and s[4] == "Edit|Grid Snapping|Ctrl+G" and hidden == 3,
           table.concat(s, " ; ") .. " hidden " .. tostring(hidden))
     find(editWin(), "td_e_cuadd"):set_active(true)
 end)
@@ -583,7 +751,12 @@ end)
 at(500, function()
     check("J custom button runs the menu entry", SNAP.n == 1, SNAP.n)
     local b = find(dockWin(), "td_tool_custom1")
-    check("J plain entry not lit", b and not b:get_style_context():has_class("td-on"))
+    check("J snapshot button lit while snapshot waits for a drag (0.8.2)", b and b:get_style_context():has_class("td-on"))
+    GLib.setenv("XOPP_SNAPSHOT_ON", "0", true)     -- the copy is made
+end)
+at(500, function()
+    local b = find(dockWin(), "td_tool_custom1")
+    check("J snapshot button not lit once the copy is made", b and not b:get_style_context():has_class("td-on"))
     find(editWin(), "td_e_cuadd"):set_active(true)
 end)
 at(500, function()

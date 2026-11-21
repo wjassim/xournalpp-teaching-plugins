@@ -1,5 +1,31 @@
 # tool-dock changelog
 
+## 0.8.2 (2026-11-21)
+- The snapshot button (custom button "Snapshot: drag a rectangle") is now lit while snapshot waits for your
+  drag, until the copy is made. Needs snapshot 0.11 (it publishes `XOPP_SNAPSHOT_ON`).
+
+## 0.8.1 (2026-11-21)
+- **Lighter:** a load test showed the dock kept Xournal++ about 10 % busy even when nothing happened,
+  mostly from checking every button for a click 7 times a second. Now the buttons are checked only while
+  the pointer is over the dock (or was in the last half second), plus once every 1.5 s to be safe. The lit
+  buttons follow Xournal++ every 0.3 s (was 0.2 s). Nothing changes in how the dock works.
+
+## 0.8 (2026-11-20)
+- **Move buttons:** hold a button (or right-click it) and the small window now has ◀ Move / Move ▶ (▲ / ▼
+  for a column dock) next to Remove. Each press moves the button one place; the window stays open so you
+  can keep going. Works for tools, helpers, custom buttons and colours. Cancel is now Close. The window
+  doesn't block anything and closes by itself when you start writing on the page.
+- **Pen line style buttons:** standard, dashed, dash-dot and dotted, with Xournal++'s own icons. A click
+  switches to the pen with that style (a shape mode stays on). The style is lit only while you're on the
+  pen, like Xournal++'s *Pen Options* menu. New section "Pen line style" in the edit list, all unticked
+  at first.
+- **Auto zoom pause button** (pause icon, with the auto zoom button in the edit list): presses autozoom
+  0.16's "Auto zoom: pause zoom in / out" and is lit while auto zoom is paused.
+
+## 0.7.5 (2026-11-20)
+- Two new buttons for preserve-view 2.8: **Carry ink on / off** (lit while on) and **Clear page ink**.
+  Shown only when preserve-view is installed.
+
 ## 0.7.4 (2026-11-19)
 - Text and one-colour icons (F7, +, zoom, magnifier, camera, the size dot) no longer turn grey. The dock
   never takes the keyboard, so after a click GTK draws it as a window in the background (`:backdrop`)
