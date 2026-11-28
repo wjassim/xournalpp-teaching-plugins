@@ -1,5 +1,18 @@
 # tool-dock changelog
 
+## 0.9.1 (2026-11-26)
+- Fixed a crash of Xournal++ some seconds after start in 0.9: the dock closed the plugins folder listing
+  by hand, and Lua freed it a second time later (GLib 2.80+ counts references on it).
+
+## 0.9 (2026-11-26)
+- **Plugins bring their own button icons.** A plugin can ship a `dock.txt` (one line per Plugin menu entry:
+  `<menu entry> = <icon name>`, optionally `| <flag>` to light the button) and an `icons/` folder with its
+  SVG icons. The dock reads them at start, so a new plugin gets its own icon with no change to the dock.
+  The auto zoom settings panel now has its own icon. Auto zoom, snapshot and
+  preserve-view ship `dock.txt` too; the dock's own list stays as a fallback for older copies of them.
+- A custom button without an icon now shows the first three letters of its name, not the end of its
+  shortcut.
+
 ## 0.8.2 (2026-11-21)
 - The snapshot button (custom button "Snapshot: drag a rectangle") is now lit while snapshot waits for your
   drag, until the copy is made. Needs snapshot 0.11 (it publishes `XOPP_SNAPSHOT_ON`).

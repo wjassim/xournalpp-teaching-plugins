@@ -8,7 +8,7 @@ also pass the top edge and slide the view.)
 
 Move the dock next to your writing and pick your tools and colours right there.
 
-Version 0.8.2. Needs Xournal++ 1.3.8 or newer (stable or nightly). What changed in each version:
+Version 0.9.1. Needs Xournal++ 1.3.8 or newer (stable or nightly). What changed in each version:
 [CHANGELOG.md](CHANGELOG.md).
 
 ## Keys (also in the Plugin menu)
@@ -76,8 +76,9 @@ Version 0.8.2. Needs Xournal++ 1.3.8 or newer (stable or nightly). What changed 
   the dock to start with.
 - **Auto zoom on / off** (magnifier icon): does what Ctrl+Alt+F5 does, and is lit while auto zoom is on.
   Shown only when the autozoom plugin is installed.
-- **Auto zoom: pause zoom in / out** (pause icon): stops auto zoom zooming in and out by itself, while the
-  edge slide and the follow glide keep working. Lit while paused. Needs autozoom 0.16.
+- **Auto zoom: pause zoom in / out** (pause icon): pauses auto zoom. With autozoom 0.17 everything stops
+  (no zoom in / out, no edge slide, no follow glide); with 0.16 the edge slide and follow still work. Lit
+  while paused. Needs autozoom 0.16 or later.
 - **Carry ink on / off** (copy icon) and **Clear page ink** (broom icon): preserve-view's carry ink, see its
   README. Carry ink is lit while on. Shown only when preserve-view is installed.
 - **Colours:** each colour with a Remove button, and "Add colour ..." (the normal colour picker).
@@ -103,12 +104,25 @@ the Xournal++ menus that has a shortcut, and everything in the Plugin menu.
 - The button runs the menu item itself (it doesn't fake a key press), so it still works if you change the
   key.
 - It shows an icon when it knows the item (magnifier = auto zoom, camera = snapshot, arrows = next /
-  previous page, the tool's own icon for Pen, Eraser, Undo, Zoom In ...), otherwise the end of its shortcut,
-  for example "F9". Hover over it to see its full name and shortcut.
+  previous page, the tool's own icon for Pen, Eraser, Undo, Zoom In ..., or the icon its plugin brings, see
+  below), otherwise the first three letters of its name. Hover over it to see its full name and shortcut.
 - It's lit while the item is on (a tick or tool item in the menu, auto zoom, or snapshot while it waits
   for your drag: needs snapshot 0.11).
 - Careful with items like Quit, Delete Page, Fullscreen or Presentation Mode: they do exactly that.
 
+
+## Icons that plugins bring (0.9)
+
+A plugin can give its Plugin menu entries a dock icon. It puts a `dock.txt` in its folder, one line per
+entry:
+
+    My plugin: show / hide = my-plugin-symbolic
+    Auto zoom: ON / OFF = system-search-symbolic | XOPP_AUTOZOOM_ON
+
+and the SVG files in an `icons/` folder (`my-plugin-symbolic.svg`). The name may also be an icon of
+Xournal++'s theme. After `|` comes an environment flag the plugin sets to `1` while it is on: the button
+is lit then. Names ending in `-symbolic` take the theme's colour (light or dark). The dock reads these
+files when Xournal++ starts, so a new plugin needs no change to the dock.
 ## Settings (`settings.txt` in this folder)
 
 The plugin writes this file itself. You can edit it with Xournal++ closed.

@@ -1,0 +1,7 @@
+# Tool dock buttons for this plugin (read by the tool-dock plugin at start, 0.9+).
+# One line per Plugin menu entry:  <menu entry> = <icon name>  [| <environment flag that lights the button>]
+# Icon names: this plugin's icons/ folder (<name>.svg) or Xournal++'s icon theme.
+Next Page (Keep View) = go-next-symbolic
+Previous Page (Keep View) = go-previous-symbolic
+Carry ink: on / off = edit-copy-symbolic | XOPP_CARRYINK_ON
+Clear page ink = edit-clear-all-symbolic

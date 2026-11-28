@@ -909,6 +909,27 @@ at(300, function()
     Gtk.Settings.get_default().gtk_application_prefer_dark_theme = false
     toolDockToggle()
 end)
+-- 0.9: icons the plugins bring (their dock.txt + icons/ folder)
+at(100, function()
+    local I = TOOLDOCK_INTERNALS
+    local G = Gtk
+    I.CUSTOM[9] = {group = "Plugin", label = "Calculator: show / hide", key = "Shift+Ctrl+F5"}
+    I.CUSTOM[10] = {group = "Plugin", label = "Calculator: send the last answer again", key = "Shift+Ctrl+F6"}
+    I.CUSTOM[11] = {group = "Plugin", label = "Auto zoom: settings panel", key = "Ctrl+Alt+F7"}
+    local function found(n) return G.IconTheme.get_default():lookup_icon(n, 16, 0) ~= nil end
+    for id, icon in pairs({custom9 = "calculator-plugin-symbolic", custom10 = "calculator-send-symbolic",
+                           custom11 = "autozoom-panel-symbolic"}) do
+        local e = I.entryOf(id)
+        check("P " .. id .. " icon from its plugin", e and e.icon == icon, e and e.icon)
+        check("P " .. id .. " icon file found", found(icon))
+    end
+    local s = I.entryOf("custom9")
+    check("P no icon = 3 letters", s and s.short == "Cal", s and s.short)
+    I.CUSTOM[9], I.CUSTOM[10], I.CUSTOM[11] = nil, nil, nil
+    -- 0.9.1: the folder listing must survive garbage collection (0.9 freed it twice = crash)
+    for _ = 1, 3 do collectgarbage("collect") end
+    check("P garbage collection after the plugin icons", true)
+end)
 at(200, function() loop:quit() end)
 loop:run()
 main:destroy()

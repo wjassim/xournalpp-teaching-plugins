@@ -1,5 +1,14 @@
 # autozoom changelog
 
+## 0.17 (2026-11-24)
+- **Pause now stops everything:** while paused there is no zoom in, no zoom out, no edge slide and no
+  follow glide, so the view stays exactly where it is. Before, the edge slide and the follow glide kept
+  working (and the edge slide even worked when not zoomed in). A zoom in or out already under way when you
+  press pause finishes first. Ctrl+Alt+F6 still zooms in or out by hand. The menu entry keeps its name
+  ("Auto zoom: pause zoom in / out"), so the tool-dock button keeps working; the panel button is now called
+  "Pause auto zoom".
+- Own icon for a tool-dock button that opens the settings panel (`dock.txt` + `icons/`, needs tool-dock 0.9).
+
 ## 0.16.1 (2026-11-21)
 - Fix: zoomed in, a long press that doesn't write (dragging a Select Rectangle box for a snapshot, or
   dragging a selection) didn't count as being busy. After 3 s the zoom out started and ran the moment you

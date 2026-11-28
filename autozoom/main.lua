@@ -1,5 +1,5 @@
 -- Auto Zoom for Xournal++: zooms in where the pen writes, zooms out when writing stops.
--- Author: Wissam Jassim (written with Claude), 2026-11-13. Version 0.16.1: 2026-11-21.
+-- Author: Wissam Jassim (written with Claude), 2026-11-13. Version 0.17: 2026-11-24.
 -- Copyright (c) 2026 Wissam Jassim. MIT licence, see LICENSE in the repository root.
 -- SPDX-License-Identifier: MIT
 --
@@ -10,7 +10,7 @@
 --   Ctrl+Alt+F5   auto zoom ON / OFF
 --   Ctrl+Alt+F6   zoom in at the pen now / zoom out now   (only while ON)
 --   Ctrl+Alt+F7   settings panel (a small floating window; every setting, saved by itself)
---   (no key)      pause zoom in / out (KEY_PAUSE; also a button in the panel and on the tool dock)
+--   (no key)      pause: zoom, edge slide and follow all stop (KEY_PAUSE; also a button in the panel and on the tool dock)
 --
 -- HOW IT BEHAVES (while ON)
 --   * Zoom in: the pen hovers still for a moment, or you simply start writing. The spot
@@ -24,9 +24,8 @@
 --     it was. If you went to another page meanwhile, it returns to the same place there.
 --   * You change the zoom yourself while zoomed in (toolbar, tablet dial, Ctrl+wheel):
 --     the plugin takes your zoom as the new zoom level and remembers it.
---   * Pause (0.16): the zoom stays as it is, no zoom in and no zoom out by itself. The edge
---     slide and the follow glide keep working (the edge slide also when not zoomed in).
---     Ctrl+Alt+F6 still zooms in / out. Pause while OFF switches auto zoom on, paused.
+--   * Pause (0.17): everything stops. The view stays as it is: no zoom in, no zoom out, no
+--     edge slide, no follow glide. Ctrl+Alt+F6 still zooms in / out by hand. Pause while OFF switches auto zoom on, paused.
 --     Switching OFF ends the pause; every start of Xournal++ is unpaused.
 --   * All movement uses a critically damped spring: soft start, soft stop, no overshoot,
 --     and it can change direction at any moment without a jump.
@@ -315,8 +314,8 @@ local function publishOn(on)
     pcall(function() B.GLib.setenv("XOPP_AUTOZOOM_ON", on and "1" or "0", true) end)
 end
 
--- 0.16: pause. While paused the zoom never changes by itself (no zoom in, no zoom out); the edge
--- slide and the follow glide keep working, the edge slide also when not zoomed in. Published as
+-- 0.16: pause. 0.17: the pause stops everything: no zoom in, no zoom out, no edge slide, no follow
+-- glide (a zoom in / out already under way finishes, so the view never stops half way). Published as
 -- XOPP_AUTOZOOM_PAUSED = 1 / 0 for tool-dock. Not saved: every start is unpaused; OFF ends it.
 local paused = false
 local publishedPaused = nil
@@ -931,7 +930,7 @@ local function tick()
         end
         if alive > CFG.STALE_MS then st.anchor = nil end
         local sliding = false
-        if CFG.PAN and (CFG.PAN_IDLE or paused) then
+        if CFG.PAN and CFG.PAN_IDLE and not paused then
             sliding = edgeSlide(sp, pen, now, dts, alive) or (pen ~= nil and pen.inside and inEdge(sp, pen))
         end
         st.idleFast = sliding
@@ -977,7 +976,10 @@ local function tick()
     elseif st.mode == "ZOOMED" then
         local _, byHand = camPos(sp)
         if byHand then st.fT, st.ink = nil, nil end
-        if pen and pen.down then
+        if paused then
+            -- 0.17: paused, nothing moves by itself (no follow, no edge slide, no zoom out)
+            st.fT, st.ink, st.pvx, st.pvy = nil, nil, 0, 0
+        elseif pen and pen.down then
             -- tip down: nothing moves. Any press on the page counts as busy, also one that is not
             -- writing (a Select Rectangle drag for a snapshot), so no zoom out waits for its release.
             if pen.inside then st.idleSince = now end
@@ -1194,11 +1196,11 @@ local function openPanel()
     grid:attach(p.onBtn, 0, row, 1, 1)
     grid:attach(p.state, 1, row, 2, 1)
     row = row + 1
-    p.pauseBtn = G.ToggleButton.new_with_label("Pause zoom in / out")
+    p.pauseBtn = G.ToggleButton.new_with_label("Pause auto zoom")
     p.pauseBtn:set_name("az_pause")
-    p.pauseBtn:set_tooltip_text("Pressed: the zoom stays as it is. No zoom in and no zoom out by itself.\n"
-        .. "The edge slide and the follow glide keep working (the edge slide also when not zoomed in).\n"
-        .. "Ctrl+Alt+F6 still zooms in or out. Press again and auto zoom zooms by itself again.\n"
+    p.pauseBtn:set_tooltip_text("Pressed: everything stops and the view stays as it is.\n"
+        .. "No zoom in, no zoom out, no edge slide, no follow glide.\n"
+        .. "Ctrl+Alt+F6 still zooms in or out by hand. Press again and auto zoom works by itself again.\n"
         .. "If auto zoom is off, this switches it on, paused. Switching it off ends the pause.")
     grid:attach(p.pauseBtn, 0, row, 1, 1)
     row = row + 1
@@ -1360,7 +1362,7 @@ local function openPanel()
         if pa ~= p.shownPaused and pa ~= paused then autozoomPause() end
         if p.pauseBtn:get_active() ~= paused then p.pauseBtn:set_active(paused) end
         if p.shownPaused ~= paused or not p.pauseLabelSet then
-            p.pauseBtn:set_label(paused and "Zoom paused" or "Pause zoom in / out")
+            p.pauseBtn:set_label(paused and "Auto zoom paused" or "Pause auto zoom")
             p.pauseLabelSet = true
         end
         p.shownPaused = paused
@@ -1368,7 +1370,7 @@ local function openPanel()
         if st.mode == "ZOOMED" and st.saved then
             text = string.format("zoomed in  x %.2f", app.getZoom() / st.saved.zoom)
         end
-        if paused and st.mode ~= "OFF" then text = text .. ", zoom paused" end
+        if paused and st.mode ~= "OFF" then text = text .. ", paused" end
         if st.scaleBad then text = text .. "  (layout check failed, see the log)" end
         if text ~= p.stateText then
             p.state:set_label(text)
@@ -1406,13 +1408,13 @@ function autozoomNow()
     if not ok then log("key error: " .. tostring(e)) end
 end
 
--- 0.16: pause zoom in / out (edge slide and follow keep working). While OFF: switch on, paused.
+-- 0.16: pause (0.17: stops everything, also the edge slide and follow). While OFF: switch on, paused.
 function autozoomPause()
     if st.mode == "OFF" and not turnOn(false) then return end
     paused = not paused
     publishPaused()
     log(paused and "zoom paused" or "zoom pause ended")
-    toast(paused and "Auto zoom: zoom paused (edge slide still works)" or "Auto zoom: zooms by itself again")
+    toast(paused and "Auto zoom: paused (no zoom, no edge slide)" or "Auto zoom: works by itself again")
 end
 
 function autozoomPanel()

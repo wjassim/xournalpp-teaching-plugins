@@ -1,7 +1,7 @@
 # Xournal++ plugins for teaching with a pen
 
 I use [Xournal++](https://github.com/xournalpp/xournalpp) in my lessons with a Wacom pen. A few small things kept slowing me down, so I wrote these
-four plugins to fix them. I use them every day now.
+plugins to fix them. I use them every day now.
 
 They're made around the way I work, so some choices are just my own taste. If you write a lot with a pen
 in Xournal++, I hope they make your work easier too.
@@ -17,6 +17,19 @@ Each plugin works on its own, so you can take only the ones you want.
 
 Thanks to the Xournal++ team for a great program and its plugin system. These plugins aren't part of
 Xournal++. They're just something I made for my own needs and wanted to share, as they are.
+
+## Contents
+
+- [See them in action](#see-them-in-action)
+- [What they fix](#what-they-fix)
+- [Make them your own](#make-them-your-own)
+- [What you need](#what-you-need)
+- [Installing](#installing)
+- [Shortcut keys](#shortcut-keys)
+- [After updating Xournal++](#after-updating-xournal)
+- [If something doesn't work](#if-something-doesnt-work)
+- [More details](#more-details)
+- [Licence](#licence)
 
 ## See them in action
 
@@ -157,7 +170,7 @@ About your system:
 | Ctrl+Alt+F5 | autozoom | auto zoom on / off |
 | Ctrl+Alt+F6 | autozoom | zoom in at the pen now / zoom out now |
 | Ctrl+Alt+F7 | autozoom | settings panel |
-| (none) | autozoom | pause zoom in / out (button in the panel and on the dock) |
+| (none) | autozoom | pause: zoom, edge slide and follow all stop (button in the panel and on the dock) |
 | Ctrl+Alt+F8 | snapshot | drag a box to copy |
 | Ctrl+Alt+F9 | snapshot | snapshot window |
 | Ctrl+Alt+Right / Left | preserve-view | next / previous page, same view |

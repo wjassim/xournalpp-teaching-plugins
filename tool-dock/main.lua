@@ -1,4 +1,4 @@
--- Tool dock plugin for Xournal++  (v0.8.2)
+-- Tool dock plugin for Xournal++  (v0.9.1)
 -- Author: Wissam Jassim (written with Claude), 2026-11-17.
 -- Copyright (c) 2026 Wissam Jassim. MIT licence, see LICENSE in the repository root.
 -- SPDX-License-Identifier: MIT
@@ -143,7 +143,7 @@ local CATALOGUE = {
     -- another plugin's menu entry (0.6): menu = its label, plugin = its folder, env = its ON flag
     {id = "autozoom",         menu = "Auto zoom: ON / OFF", plugin = "autozoom", env = "XOPP_AUTOZOOM_ON",
                               icon = "system-search-symbolic", label = "Auto zoom on / off"},
-    -- 0.8: autozoom 0.16's pause (no zoom in / out by itself, edge slide still works); lit while paused
+    -- 0.8: autozoom's pause (0.17: zoom, edge slide and follow all stop); lit while paused
     {id = "autozoomPause",    menu = "Auto zoom: pause zoom in / out", plugin = "autozoom", env = "XOPP_AUTOZOOM_PAUSED",
                               icon = "media-playback-pause-symbolic", label = "Auto zoom: pause zoom in / out"},
     -- 0.7.5: preserve-view 2.8's carry ink (lit while it publishes XOPP_CARRYINK_ON=1) and clear
@@ -217,14 +217,14 @@ local TICK_BOX_OF = {
     ["auto zoom: pause zoom in / out"] = "autozoomPause",
     ["carry ink: on / off"] = "carryInk", ["clear page ink"] = "clearInk",
 }
--- What a short text button shows: the end of the shortcut ("Ctrl+Alt+F8" -> "F8"), else the name.
+-- What a short text button shows (no icon): the first 3 letters of the entry's name (0.9; before:
+-- the end of the shortcut, but two plugins can both end in "F7").
 local function customShort(c)
-    if c.key then
-        local k = c.key:match("%+(%+)$") or c.key:match("([^+]+)$") or c.key
-        if #k <= 5 then return k end
-    end
-    return c.label:sub(1, 3)
+    local w = c.label:gsub("[^%w]", "")
+    return w ~= "" and w:sub(1, 3) or c.label:sub(1, 3)
 end
+-- 0.9: icons that the plugins bring (their dock.txt + icons/ folder), filled after start
+local readPluginLooks
 -- The catalogue entry of a dock id; a custom button gets one made for it.
 local function entryOf(id)
     if BY_ID[id] then return BY_ID[id] end
@@ -232,7 +232,7 @@ local function entryOf(id)
     local c = n and CUSTOM[n]
     if not c then return nil end
     local low = c.label:lower()
-    local look = CUSTOM_LOOK[low] or {}
+    local look = (readPluginLooks and readPluginLooks()[low]) or CUSTOM_LOOK[low] or {}
     local icon = look.icon
     if not icon then
         for _, e in ipairs(CATALOGUE) do if e.label:lower() == low then icon = e.icon break end end
@@ -321,6 +321,64 @@ local function pluginsDir()
     local o = rawget(_G, "TOOLDOCK_PLUGINS_DIR")
     if type(o) == "string" then return o end
     return SETTINGS and SETTINGS:match("^(.*)[/\\][^/\\]+[/\\][^/\\]*$")
+end
+-- 0.9: each plugin may ship dock.txt (lines "<menu entry> = <icon name> [| <ON flag>]") and an
+-- icons/ folder with <icon name>.svg (symbolic: follows the light / dark theme). Read once, when GTK
+-- is there; the icons/ folders join the icon theme's search path. A new plugin then gets its own
+-- button icon without any change here.
+local pluginLooks = nil
+local B = nil                    -- GTK libraries once loaded (set by loadGtk below)
+readPluginLooks = function()
+    if pluginLooks then return pluginLooks end
+    if not B then return {} end
+    pluginLooks = {}
+    local dir = pluginsDir()
+    if not dir then return pluginLooks end
+    local names = {}
+    local okD, err = pcall(function()
+        local d = B.GLib.Dir.open(dir, 0)
+        while true do
+            local n = d:read_name()
+            if not n then break end
+            names[#names + 1] = n
+        end
+        -- 0.9.1: NO d:close(). Since GLib 2.80 a GDir is ref-counted: close() frees it and Lua's garbage
+        -- collector frees it again later = Xournal++ crash (signal 11) some seconds after start.
+        -- The collector's unref closes the folder.
+    end)
+    if not okD then log("plugin icons: cannot list " .. dir .. ": " .. tostring(err)) end
+    table.sort(names)
+    local theme = nil
+    pcall(function() theme = B.Gtk.IconTheme.get_default() end)
+    for _, n in ipairs(names) do
+        local f = io.open(dir .. SEP .. n .. SEP .. "dock.txt", "r")
+        if f then
+            local count = 0
+            for raw in f:lines() do
+                local line = raw:gsub("\r$", "")
+                if not line:match("^%s*#") then
+                    local label, rest = line:match("^%s*(.-)%s*=%s*(.-)%s*$")
+                    if label and label ~= "" and rest and rest ~= "" then
+                        local icon, env = rest:match("^(.-)%s*|%s*(.-)$")
+                        icon = icon or rest
+                        pluginLooks[plainLabel(label):lower()] = {icon = icon, env = (env and env ~= "") and env or nil, plugin = n}
+                        count = count + 1
+                    end
+                end
+            end
+            f:close()
+            if theme then pcall(function() theme:append_search_path(dir .. SEP .. n .. SEP .. "icons") end) end
+            log("plugin icons: " .. n .. " gives " .. count)
+        end
+    end
+    return pluginLooks
+end
+-- 0.9: has_icon misses icons that sit loose in a search-path folder (the plugins' icons/); lookup finds them
+local function hasIcon(G, name)
+    if not name then return false end
+    local th = G.IconTheme.get_default()
+    if th:has_icon(name) then return true end
+    return th:lookup_icon(name, 16, 0) ~= nil
 end
 local pluginCheck = {}
 pluginInstalled = function(name)
@@ -529,7 +587,7 @@ local function rightEdge(st, down, overDock)
 end
 
 -- ------------------------------------------------------------------ GTK helpers
-local B = nil
+B = nil        -- (declared above, 0.9: readPluginLooks needs it)
 local function bindings()
     if B then return B end
     local ok, lgo = pcall(require, "LuaGObject")
@@ -1031,7 +1089,7 @@ local function toolButton(e, px)
     local G = B.Gtk
     local b = newToggle("td_tool_" .. e.id, e.tip or e.label)
     b:set_size_request(px, px)
-    local okI, has = pcall(function() return e.icon ~= nil and G.IconTheme.get_default():has_icon(e.icon) end)
+    local okI, has = pcall(function() return e.icon ~= nil and hasIcon(G, e.icon) end)
     if okI and has then
         local img = G.Image.new_from_icon_name(e.icon, G.IconSize.LARGE_TOOLBAR)
         img:set_pixel_size(math.floor(px * 0.62))
@@ -1081,7 +1139,7 @@ end
 -- What a size button shows: Xournal++'s thickness icon k, or a dot when the icon is missing.
 local function sizeShow(k, px, name)
     local G = B.Gtk
-    local okI, has = pcall(function() return G.IconTheme.get_default():has_icon(LINE_SIZES[k].icon) end)
+    local okI, has = pcall(function() return hasIcon(G, LINE_SIZES[k].icon) end)
     if okI and has then
         local img = G.Image.new_from_icon_name(LINE_SIZES[k].icon, G.IconSize.LARGE_TOOLBAR)
         img:set_pixel_size(math.floor(px * 0.62))
@@ -1810,7 +1868,7 @@ fillEdit = function()
                 if section == "lines" then
                     cb = G.CheckButton()
                     local box = G.Box {orientation = G.Orientation.HORIZONTAL, spacing = 8}
-                    local okI, has = pcall(function() return G.IconTheme.get_default():has_icon(e.icon) end)
+                    local okI, has = pcall(function() return hasIcon(G, e.icon) end)
                     if okI and has then
                         local img = G.Image.new_from_icon_name(e.icon, G.IconSize.LARGE_TOOLBAR)
                         img:set_pixel_size(22)

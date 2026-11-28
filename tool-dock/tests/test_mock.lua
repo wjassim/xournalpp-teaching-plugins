@@ -243,12 +243,12 @@ if I.customIndex then
           and s7.env == "XOPP_SNAPSHOT_ON")
     I.CUSTOM[7] = nil
     local u = I.entryOf("custom2")
-    check("custom: Undo gets the catalogue's undo icon", u and u.icon == "xopp-edit-undo" and u.short == "Z", u and u.short)
+    check("custom: Undo gets the catalogue's undo icon", u and u.icon == "xopp-edit-undo" and u.short == "Und", u and u.short)
     I.CUSTOM[6] = {group = "Plugin", label = "Snapshot: show the floating window", key = "Ctrl+Alt+F9"}
     local s6 = I.entryOf("custom6")
-    check("custom: unknown entry = text of its shortcut", s6.icon == nil and s6.short == "F9", s6.short)
+    check("custom: unknown entry = 3 letters of its name (0.9)", s6.icon == nil and s6.short == "Sna", s6.short)
     I.CUSTOM[6] = {group = "View", label = "Zoom In", key = "Ctrl++"}
-    check("custom: Ctrl++ shows +, catalogue icon", I.entryOf("custom6").short == "+" and I.entryOf("custom6").icon == "zoom-in-symbolic",
+    check("custom: Ctrl++ catalogue icon", I.entryOf("custom6").short == "Zoo" and I.entryOf("custom6").icon == "zoom-in-symbolic",
           I.entryOf("custom6").short)
     I.CUSTOM[6] = {group = "Plugin", label = "Check Page Step"}
     check("custom: no shortcut = 3 letters", I.entryOf("custom6").short == "Che")

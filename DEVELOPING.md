@@ -12,6 +12,11 @@ plugin's own README.
 
 Each plugin writes its own `settings.txt` next to `main.lua` (not tracked) and a log in the temp folder.
 
+Dock icons: a plugin may add `dock.txt` (one line per Plugin menu entry: `<menu entry> = <icon name>`,
+optionally `| <ON flag>`) and an `icons/` folder with `<icon name>.svg`. Draw the SVG on a 16 x 16 grid
+with filled shapes only (no strokes) and name it `...-symbolic` so GTK colours it for the light or dark
+theme. The tool dock (0.9+) reads these at start; nothing in the dock needs changing for a new plugin.
+
 ## Requirements
 
 - Xournal++ 1.3.x. Since 1.3.0 the Windows and macOS releases ship Lua 5.5 and LuaGObject; the plugins

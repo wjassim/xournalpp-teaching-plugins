@@ -17,7 +17,7 @@ Version 0.16.1. Needs Xournal++ 1.3.8 or newer (stable or nightly). What changed
 | Ctrl+Alt+F5 | Auto zoom on / off. A small note shows for a second (nothing to click). |
 | Ctrl+Alt+F6 | Zoom in at the pen now / zoom out now (only while it's on). |
 | Ctrl+Alt+F7 | Settings panel. |
-| (no key) | Pause zoom in / out (see below). Also a button in the panel and on the tool dock. |
+| (no key) | Pause (see below). Also a button in the panel and on the tool dock. |
 
 To change a key: close Xournal++, open `settings.txt` in this folder and edit `KEY_TOGGLE`, `KEY_NOW`,
 `KEY_PANEL` or `KEY_PAUSE`, for example `KEY_TOGGLE=<Control><Shift>Z`, or `none` for no key.
@@ -43,10 +43,9 @@ To change a key: close Xournal++, open `settings.txt` in this folder and edit `K
 - **Your own zoom:** change the zoom yourself while zoomed in (toolbar buttons, tablet dial, Ctrl+wheel)
   and the plugin takes it as the new zoom level and uses it from then on. Zoom back to the normal view or
   below and the plugin lets go and keeps your view.
-- **Pause:** the zoom stays as it is, with no zoom in and no zoom out by itself, but the edge slide and
-  the follow glide keep working (the edge slide also when you're not zoomed in). Handy when you want to
-  stay at one zoom and move around the page with the pen. Ctrl+Alt+F6 still zooms in or out. Press it again
-  and auto zoom zooms by itself again. Pause while auto zoom is off switches it on, paused. Switching it
+- **Pause:** everything stops and the view stays exactly as it is: no zoom in, no zoom out, no edge slide
+  and no follow glide. Handy when you want to write anywhere on the page without the view moving.
+  Ctrl+Alt+F6 still zooms in or out by hand. Press it again and auto zoom works by itself again. Pause while auto zoom is off switches it on, paused. Switching it
   off ends the pause, and Xournal++ always starts unpaused.
 - Movements start and stop softly, with no overshoot, and can turn round at any moment without a jump.
 - It doesn't zoom while you use a selection tool, the hand or the eraser, while something is selected, or
@@ -67,7 +66,7 @@ at once and is saved by itself.
 | Group | Setting | Default | What it means |
 |---|---|---|---|
 | | Auto zoom: ON / OFF | off | same as Ctrl+Alt+F5; the text beside it shows what the plugin is doing |
-| | Pause zoom in / out | not paused | pressed = no zoom in / out by itself, edge slide and follow still work |
+| | Pause auto zoom | not paused | pressed = everything stops: no zoom in / out, no edge slide, no follow |
 | Zoom | Zoom level | 1.60 | how much to zoom in |
 | | Smoothness | 0.40 s | how soft the zoom is; the whole movement takes about 3 times this |
 | | Learn the zoom level when I zoom by hand | on | off = a zoom by hand makes the plugin let go |

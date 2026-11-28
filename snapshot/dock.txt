@@ -1,0 +1,4 @@
+# Tool dock buttons for this plugin (read by the tool-dock plugin at start, 0.9+).
+# One line per Plugin menu entry:  <menu entry> = <icon name>  [| <environment flag that lights the button>]
+# Icon names: this plugin's icons/ folder (<name>.svg) or Xournal++'s icon theme.
+Snapshot: drag a rectangle (on / off) = camera-photo-symbolic | XOPP_SNAPSHOT_ON
