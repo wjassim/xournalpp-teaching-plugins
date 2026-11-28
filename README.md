@@ -1,6 +1,6 @@
-# Xournal++ plugins for teaching with a pen
+# Xournal++ teaching plugins
 
-I use [Xournal++](https://github.com/xournalpp/xournalpp) in my lessons with a Wacom pen. A few small things kept slowing me down, so I wrote these
+I write a lot in [Xournal++](https://github.com/xournalpp/xournalpp) with a pen tablet. A few small things kept slowing me down, so I wrote these
 plugins to fix them. I use them every day now.
 
 They're made around the way I work, so some choices are just my own taste. If you write a lot with a pen
@@ -75,7 +75,7 @@ Two things I really like about it:
   Ctrl+V in Word, PowerPoint, Paint and so on. Programs that understand transparency get the
   see-through picture; Paint doesn't, so there you get it on the page colour.
 
-**preserve-view.** My slides are PDFs. When I'm zoomed in and go to the next page, Xournal++ lands
+**preserve-view.** I often write on PDF slides. When I'm zoomed in and go to the next page, Xournal++ lands
 somewhere else on it and I have to scroll back. This plugin moves exactly one page, so the view stays where
 it was.
 
